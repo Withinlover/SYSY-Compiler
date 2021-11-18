@@ -17,7 +17,8 @@ public class Main {
         System.setOut(printStream);
         // 词法分析
         Lexer lexer = new Lexer(builder.toString());
-        for (Token token : lexer.getTokens())
-            System.out.println(token);
+        Parser parser = new Parser(lexer.getTokens());
+        Visitor visitor = new Visitor();
+        visitor.visit(parser.getRoot());
     }
 }

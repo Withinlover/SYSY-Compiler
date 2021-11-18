@@ -30,77 +30,82 @@ public class Visitor {
                 System.out.print("\t Content: [\"" + ctx.getToken().getText() + "\"]");
             }
             System.out.println("");
-        }
-        switch (ctx.getType()) {case number -> visitNumber(ctx);
-            case ident -> visitIdent(ctx);
-            case CONST -> visitCONST(ctx);
-            case INT -> visitINT(ctx);
-            case VOID -> visitVOID(ctx);
-            case IF -> visitIF(ctx);
-            case ELSE -> visitELSE(ctx);
-            case WHILE -> visitWHILE(ctx);
-            case BREAK -> visitBREAK(ctx);
-            case CONTINUE -> visitCONTINUE(ctx);
-            case RETURN -> visitRETURN(ctx);
-            case COMMA -> visitCOMMA(ctx);
-            case SEMICOLON -> visitSEMICOLON(ctx);
-            case ASSIGN -> visitASSIGN(ctx);
-            case BRACE_L_PLUS -> visitBRACE_L_PLUS(ctx);
-            case BRACE_R_PLUS -> visitBRACE_R_PLUS(ctx);
-            case BRACE_L_MEDIUM -> visitBRACE_L_MEDIUM(ctx);
-            case BRACE_R_MEDIUM -> visitBRACE_R_MEDIUM(ctx);
-            case BRACE_L -> visitBRACE_L(ctx);
-            case BRACE_R -> visitBRACE_R(ctx);
-            case PLUS -> visitPLUS(ctx);
-            case MINUS -> visitMINUS(ctx);
-            case MUL -> visitMUL(ctx);
-            case DIV -> visitDIV(ctx);
-            case NOT -> visitNOT(ctx);
-            case MOD -> visitMOD(ctx);
-            case GT -> visitGT(ctx);
-            case LT -> visitLT(ctx);
-            case GT_EQ -> visitGT_EQ(ctx);
-            case LT_EQ -> visitLT_EQ(ctx);
-            case EQ -> visitEQ(ctx);
-            case NOT_EQ -> visitNOT_EQ(ctx);
-            case AND -> visitAND(ctx);
-            case OR -> visitOR(ctx);
-            case compUnit -> visitCompUnit(ctx);
-            case decl -> visitDecl(ctx);
-            case constDecl -> visitConstDecl(ctx);
-            case BType -> visitBType(ctx);
-            case constDef -> visitConstDef(ctx);
-            case constInitial -> visitConstInitial(ctx);
-            case varDecl -> visitVarDecl(ctx);
-            case varDef -> visitVarDef(ctx);
-            case initVal -> visitInitVal(ctx);
-            case funcDef -> visitFuncDef(ctx);
-            case funcType -> visitFuncType(ctx);
-            case funcFParams -> visitFuncFParams(ctx);
-            case funcFParam -> visitFuncFParam(ctx);
-            case block -> visitBlock(ctx);
-            case blockItem -> visitBlockItem(ctx);
-            case stmt -> visitStmt(ctx);
-            case exp -> visitExp(ctx);
-            case cond -> visitCond(ctx);
-            case lVal -> visitLVal(ctx);
-            case primaryExp -> visitPrimaryExp(ctx);
-            case unaryExp -> visitUnaryExp(ctx);
-            case unaryOp -> visitUnaryOp(ctx);
-            case funcRParams -> visitFuncRParams(ctx);
-            case mulExp -> visitMulExp(ctx);
-            case addExp -> visitAddExp(ctx);
-            case relExp -> visitRelExp(ctx);
-            case eqExp -> visitEqExp(ctx);
-            case lAndExp -> visitLAndExp(ctx);
-            case lOrExp -> visitLOrExp(ctx);
-            case constExp -> visitConstExp(ctx);
+            visitChild(ctx);
+        } else {
+            switch (ctx.getType()) {case number -> visitNumber(ctx);
+                case ident -> visitIdent(ctx);
+                case CONST -> visitCONST(ctx);
+                case INT -> visitINT(ctx);
+                case VOID -> visitVOID(ctx);
+                case IF -> visitIF(ctx);
+                case ELSE -> visitELSE(ctx);
+                case WHILE -> visitWHILE(ctx);
+                case BREAK -> visitBREAK(ctx);
+                case CONTINUE -> visitCONTINUE(ctx);
+                case RETURN -> visitRETURN(ctx);
+                case COMMA -> visitCOMMA(ctx);
+                case SEMICOLON -> visitSEMICOLON(ctx);
+                case ASSIGN -> visitASSIGN(ctx);
+                case BRACE_L_PLUS -> visitBRACE_L_PLUS(ctx);
+                case BRACE_R_PLUS -> visitBRACE_R_PLUS(ctx);
+                case BRACE_L_MEDIUM -> visitBRACE_L_MEDIUM(ctx);
+                case BRACE_R_MEDIUM -> visitBRACE_R_MEDIUM(ctx);
+                case BRACE_L -> visitBRACE_L(ctx);
+                case BRACE_R -> visitBRACE_R(ctx);
+                case PLUS -> visitPLUS(ctx);
+                case MINUS -> visitMINUS(ctx);
+                case MUL -> visitMUL(ctx);
+                case DIV -> visitDIV(ctx);
+                case NOT -> visitNOT(ctx);
+                case MOD -> visitMOD(ctx);
+                case GT -> visitGT(ctx);
+                case LT -> visitLT(ctx);
+                case GT_EQ -> visitGT_EQ(ctx);
+                case LT_EQ -> visitLT_EQ(ctx);
+                case EQ -> visitEQ(ctx);
+                case NOT_EQ -> visitNOT_EQ(ctx);
+                case AND -> visitAND(ctx);
+                case OR -> visitOR(ctx);
+                case compUnit -> visitCompUnit(ctx);
+                case decl -> visitDecl(ctx);
+                case constDecl -> visitConstDecl(ctx);
+                case BType -> visitBType(ctx);
+                case constDef -> visitConstDef(ctx);
+                case constInitial -> visitConstInitial(ctx);
+                case varDecl -> visitVarDecl(ctx);
+                case varDef -> visitVarDef(ctx);
+                case initVal -> visitInitVal(ctx);
+                case funcDef -> visitFuncDef(ctx);
+                case funcType -> visitFuncType(ctx);
+                case funcFParams -> visitFuncFParams(ctx);
+                case funcFParam -> visitFuncFParam(ctx);
+                case block -> visitBlock(ctx);
+                case blockItem -> visitBlockItem(ctx);
+                case stmt -> visitStmt(ctx);
+                case exp -> visitExp(ctx);
+                case cond -> visitCond(ctx);
+                case lVal -> visitLVal(ctx);
+                case primaryExp -> visitPrimaryExp(ctx);
+                case unaryExp -> visitUnaryExp(ctx);
+                case unaryOp -> visitUnaryOp(ctx);
+                case funcRParams -> visitFuncRParams(ctx);
+                case mulExp -> visitMulExp(ctx);
+                case addExp -> visitAddExp(ctx);
+                case relExp -> visitRelExp(ctx);
+                case eqExp -> visitEqExp(ctx);
+                case lAndExp -> visitLAndExp(ctx);
+                case lOrExp -> visitLOrExp(ctx);
+                case constExp -> visitConstExp(ctx);
+            }
         }
         dep = dep - 1;
         return null;
     }
 
-    public Void visitNumber(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitNumber(ASTNode ctx) {
+        System.out.println(ctx.getValue());
+        return visitChild(ctx);
+    }
 
     public Void visitIdent(ASTNode ctx) { return visitChild(ctx);}
 
@@ -186,7 +191,16 @@ public class Visitor {
 
     public Void visitInitVal(ASTNode ctx) { return visitChild(ctx);}
 
-    public Void visitFuncDef(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitFuncDef(ASTNode ctx) {
+        String res = "define dso_local i32 ";
+        res = res + "@" + ctx.ident().getToken().getText();
+        res = res + "() {";
+        System.out.println(res);
+        visit(ctx.block());
+        res = "}";
+        System.out.println(res);
+        return null;
+    }
 
     public Void visitFuncType(ASTNode ctx) { return visitChild(ctx);}
 
@@ -198,7 +212,12 @@ public class Visitor {
 
     public Void visitBlockItem(ASTNode ctx) { return visitChild(ctx);}
 
-    public Void visitStmt(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitStmt(ASTNode ctx) {
+        String res = "\t" + "ret i32 ";
+        System.out.print(res);
+        visit(ctx.exp());
+        return null;
+    }
 
     public Void visitExp(ASTNode ctx) { return visitChild(ctx);}
 
