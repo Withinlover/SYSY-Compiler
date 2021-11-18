@@ -30,17 +30,17 @@ public class Rule {
         add(new Rule("DIV", "\\/", TokenType.div));
         add(new Rule("MOD", "\\%", TokenType.mod));
         add(new Rule("NOT", "!", TokenType.not));
-        add(new Rule("GT", ">", TokenType.gt));
         add(new Rule("GTEQ", ">=", TokenType.gteq));
-        add(new Rule("LT", "<", TokenType.lt));
         add(new Rule("LTEQ", "<=", TokenType.lteq));
+        add(new Rule("GT", ">", TokenType.gt));
+        add(new Rule("LT", "<", TokenType.lt));
         add(new Rule("AND", "&&", TokenType.and));
         add(new Rule("OR", "\\|\\|", TokenType.or));
 
 
         // 关键字
         add(new Rule("INT", "int", TokenType.INT));
-        add(new Rule("MAIN", "main", TokenType.MAIN));
+//        add(new Rule("MAIN", "main", TokenType.MAIN));
         add(new Rule("RETURN", "return", TokenType.RETURN));
         add(new Rule("CONST", "const", TokenType.CONST));
         add(new Rule("VOID", "void", TokenType.VOID));
