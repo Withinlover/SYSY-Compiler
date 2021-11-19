@@ -15,7 +15,8 @@ public class Symbol {
     }
 
     public static Symbol newConstant(String name, int index) {
-        return new Symbol(name, 1, index);
+        Symbol res = new Symbol(name, 1, index);
+        return res;
     }
 
     public void setConstValue(int value) { constValue = value; }

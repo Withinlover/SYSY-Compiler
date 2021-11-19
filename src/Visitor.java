@@ -9,7 +9,8 @@ public class Visitor {
     private int declType; // void int array -> 0 1 2
     private int nodeValue = -114514;
     private int nodeIndex = -114514;
-    private boolean isPointer = false;
+    private int nodePointer = -114514;
+    private boolean needLValIndex = false;
     private boolean canCalc;
     private final SymbolTable table = new SymbolTable();
 
@@ -181,15 +182,58 @@ public class Visitor {
 
     public Void visitOR(ASTNode ctx) { return visitChild(ctx);}
 
-    public Void visitCompUnit(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitCompUnit(ASTNode ctx) {
+        ArrayList<Integer> params;
+
+        params = new ArrayList<>();
+        table.allocNewFunction("getint", params, 1);
+
+        params = new ArrayList<>();
+        table.allocNewFunction("getch", params, 1);
+
+        params = new ArrayList<>(); params.add(1);
+        table.allocNewFunction("putint", params, 0);
+
+        params = new ArrayList<>(); params.add(1);
+        table.allocNewFunction("putch", params, 0);
+
+        return visitChild(ctx);
+    }
 
     public Void visitDecl(ASTNode ctx) { return visitChild(ctx);}
 
-    public Void visitConstDecl(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitConstDecl(ASTNode ctx) {
+        declType = 1;
+        return visitChild(ctx);
+    }
 
     public Void visitBType(ASTNode ctx) { return visitChild(ctx);}
 
-    public Void visitConstDef(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitConstDef(ASTNode ctx) {
+        if (declType == 1) {
+            String name = ctx.ident().getToken().getText();
+            if (!table.checkName(name)) {
+                System.out.println("name repeated: " + name);
+                System.exit(-1);
+            }
+            Symbol symbol = table.allocInteger(name, 1);
+            System.out.printf("\t%%v%d = alloca i32\n", symbol.getIndex());
+            // TODO 数组
+            if (ctx.hasConstInitial()) {
+                visit(ctx.constInitial());
+                if (canCalc) {
+                    // 如果可以计算，则结果保存在 nodeValue 中
+                    System.out.printf("\tstore i32 %d, i32* %%v%d\n", nodeValue, symbol.getIndex());
+                    symbol.setConstValue(nodeValue);
+                } else {
+                    // 如果不可以计算，则返回-1
+                    System.out.println("常量必须可以计算");
+                    System.exit(-1);
+                }
+            }
+        }
+        return null;
+    }
 
     public Void visitConstInitial(ASTNode ctx) { return visitChild(ctx);}
 
@@ -219,7 +263,7 @@ public class Visitor {
                 }
             }
         }
-        return visitChild(ctx);
+        return null;
     }
 
     public Void visitInitVal(ASTNode ctx) { return visitChild(ctx);}
@@ -248,7 +292,8 @@ public class Visitor {
     public Void visitStmt(ASTNode ctx) {
         if (ctx.hasLVal()) {
             int LIndex, RVal, RIdx; boolean RCan;
-            visit(ctx.lVal()); LIndex = nodeIndex;
+            needLValIndex = false;
+            visit(ctx.lVal()); LIndex = nodePointer;
             visit(ctx.exp());
             RVal = nodeValue; RIdx = nodeIndex; RCan = canCalc;
             System.out.print("\tstore i32 ");
@@ -276,28 +321,84 @@ public class Visitor {
 
     public Void visitLVal(ASTNode ctx) {
         String name = ctx.ident().getToken().getText();
-        if (!table.checkName(name)) {
+        Symbol symbol = table.find(name);
+        if (name != null && symbol.isVariable()) {
             canCalc = false;
             nodeValue = -1;
-//            nodeIndex = table.find(name).getIndex();
-//            isPointer = true;
-            nodeIndex = table.getNewRegister();
-            System.out.printf("\tload i32 %%v%d, i32* %%v%d\n", nodeIndex, table.find(name).getIndex());
+            nodePointer = table.find(name).getIndex();
+            if (needLValIndex) {
+                nodeIndex = table.getNewRegister();
+                System.out.printf("\t%%v%d = load i32, i32* %%v%d\n", nodeIndex, table.find(name).getIndex());
+            } else {
+                nodeIndex = -1;
+            }
         } else {
-            System.out.printf("变量尚未定义：%s\n", name);
+            System.out.printf("变量尚未定义或使用常量作为左值：%s\n", name);
             System.exit(-1);
         }
-        return visitChild(ctx);
+        return null;
     }
 
     public Void visitPrimaryExp(ASTNode ctx) { return visitChild(ctx);}
 
     public Void visitUnaryExp(ASTNode ctx) {
-        if (ctx.hasUnaryOp()) {
+        if (ctx.hasIdent()) {
+            needLValIndex = true;
+            String name = ctx.ident().getToken().getText();
+            if (!table.checkFunction(name)) {
+                ArrayList<Integer> params = table.getFunctionParams(name);
+                int type = table.getFunctionType(name);
+                canCalc = false; nodeValue = -1;
+                ASTNode root = ctx.funcRParams();
+                if (params.size() > 0 && root.countExp() != params.size()) {
+                    System.out.println("参数数量不匹配");
+                    System.exit(-1);
+                }
+                ArrayList<Integer> paramIndex = new ArrayList<>();
+                ArrayList<Integer> paramType = new ArrayList<>();
+                for (int i = 0; i < params.size(); ++i) {
+                    visit(root.exp(i));
+                    if (canCalc) {
+                        paramIndex.add(nodeValue);
+                        paramType.add(0);
+                    } else {
+                        paramIndex.add(nodeIndex);
+                        paramType.add(1);
+                    }
+                }
+
+                if (type == 1) {
+                    nodeIndex = table.getNewRegister();
+                    System.out.printf("\t%%v%d = call i32 @%s(", nodeIndex, name);
+                } else {
+                    nodeIndex = -1;
+                    System.out.printf("\tcall void @%s(", name);
+                }
+                for (int i = 0;i < params.size(); ++i) {
+                    if (i != 0) System.out.print(", ");
+                    int param = paramIndex.get(i), kind = paramType.get(i);
+                    if (kind == 0) {
+                        System.out.printf("%d", param);
+                    } else {
+                        System.out.printf("%%v%d", param);
+                    }
+                }
+                System.out.println(")");
+            } else {
+                System.out.println("函数未定义:" + name);
+                System.exit(-1);
+            }
+            needLValIndex = false;
+        } else if (ctx.hasUnaryOp()) {
             visit(ctx.unaryExp());
             if (canCalc) {
                 if (ctx.unaryOp().hasMINUS())
                     nodeValue = -nodeValue;
+            } else {
+                if (nodeValue < 0 && nodeIndex < 0) {
+                    System.out.println("表达式中引用了没有返回值的函数");
+                    System.exit(-1);
+                }
             }
         } else {
             visitChild(ctx);
