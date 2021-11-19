@@ -6,7 +6,13 @@ import java.util.ArrayList;
 import java.util.Scanner;
 
 public class Visitor {
-    private int nodeValue;
+    private int declType; // void int array -> 0 1 2
+    private int nodeValue = -114514;
+    private int nodeIndex = -114514;
+    private boolean isPointer = false;
+    private boolean canCalc;
+    private final SymbolTable table = new SymbolTable();
+
     private int dep = 0;
     public int DEBUG = 0;
     public Visitor() { }
@@ -103,7 +109,9 @@ public class Visitor {
     }
 
     public Void visitNumber(ASTNode ctx) {
-        System.out.println(ctx.getValue());
+        nodeValue = ctx.getValue();
+        nodeIndex = -1;
+        canCalc = true;
         return visitChild(ctx);
     }
 
@@ -185,9 +193,34 @@ public class Visitor {
 
     public Void visitConstInitial(ASTNode ctx) { return visitChild(ctx);}
 
-    public Void visitVarDecl(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitVarDecl(ASTNode ctx) {
+        declType = 1;
+        return visitChild(ctx);
+    }
 
-    public Void visitVarDef(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitVarDef(ASTNode ctx) {
+        if (declType == 1) {
+            String name = ctx.ident().getToken().getText();
+            if (!table.checkName(name)) {
+                System.out.println("name repeated: " + name);
+                System.exit(-1);
+            }
+            Symbol symbol = table.allocInteger(name, 0);
+            System.out.printf("\t%%v%d = alloca i32\n", symbol.getIndex());
+            // TODO 数组
+            if (ctx.hasInitVal()) {
+                visit(ctx.initVal());
+                if (canCalc) {
+                    // 如果可以计算，则结果保存在 nodeValue 中
+                    System.out.printf("\tstore i32 %d, i32* %%v%d\n", nodeValue, symbol.getIndex());
+                } else {
+                    // 如果不可以计算，则结果保存在 nodeIndex 寄存器中
+                    System.out.printf("\tstore i32 %%v%d, i32* %%v%d\n", nodeIndex, symbol.getIndex());
+                }
+            }
+        }
+        return visitChild(ctx);
+    }
 
     public Void visitInitVal(ASTNode ctx) { return visitChild(ctx);}
 
@@ -213,9 +246,27 @@ public class Visitor {
     public Void visitBlockItem(ASTNode ctx) { return visitChild(ctx);}
 
     public Void visitStmt(ASTNode ctx) {
-        String res = "\t" + "ret i32 ";
-        System.out.print(res);
-        visit(ctx.exp());
+        if (ctx.hasLVal()) {
+            int LIndex, RVal, RIdx; boolean RCan;
+            visit(ctx.lVal()); LIndex = nodeIndex;
+            visit(ctx.exp());
+            RVal = nodeValue; RIdx = nodeIndex; RCan = canCalc;
+            System.out.print("\tstore i32 ");
+            if (RCan) {
+                System.out.printf("%d, ", RVal);
+            } else {
+                System.out.printf("%%v%d, ", RIdx);
+            }
+            System.out.printf("i32* %%v%d\n", LIndex);
+        } else if (ctx.hasRETURN()) {
+            visitChild(ctx);
+            if (canCalc)
+                System.out.printf("\tret i32 %d\n", nodeValue);
+            else
+                System.out.printf("\tret i32 %%v%d\n", nodeIndex);
+        } else {
+            visitChild(ctx);
+        }
         return null;
     }
 
@@ -223,19 +274,140 @@ public class Visitor {
 
     public Void visitCond(ASTNode ctx) { return visitChild(ctx);}
 
-    public Void visitLVal(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitLVal(ASTNode ctx) {
+        String name = ctx.ident().getToken().getText();
+        if (!table.checkName(name)) {
+            canCalc = false;
+            nodeValue = -1;
+//            nodeIndex = table.find(name).getIndex();
+//            isPointer = true;
+            nodeIndex = table.getNewRegister();
+            System.out.printf("\tload i32 %%v%d, i32* %%v%d\n", nodeIndex, table.find(name).getIndex());
+        } else {
+            System.out.printf("变量尚未定义：%s\n", name);
+            System.exit(-1);
+        }
+        return visitChild(ctx);
+    }
 
     public Void visitPrimaryExp(ASTNode ctx) { return visitChild(ctx);}
 
-    public Void visitUnaryExp(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitUnaryExp(ASTNode ctx) {
+        if (ctx.hasUnaryOp()) {
+            visit(ctx.unaryExp());
+            if (canCalc) {
+                if (ctx.unaryOp().hasMINUS())
+                    nodeValue = -nodeValue;
+            }
+        } else {
+            visitChild(ctx);
+        }
+        return null;
+    }
 
     public Void visitUnaryOp(ASTNode ctx) { return visitChild(ctx);}
 
     public Void visitFuncRParams(ASTNode ctx) { return visitChild(ctx);}
 
-    public Void visitMulExp(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitMulExp(ASTNode ctx) {
+        if (ctx.hasMulExp()) {
+            int LVal, RVal, LIdx, RIdx; boolean LCan, RCan;
+            visit(ctx.mulExp());
+            LVal = nodeValue; LIdx = nodeIndex; LCan = canCalc;
+            visit(ctx.unaryExp());
+            RVal = nodeValue; RIdx = nodeIndex; RCan = canCalc;
+            canCalc = LCan & RCan;
+            if (canCalc) {
+                if (ctx.hasMUL()) {
+                    nodeValue = LVal * RVal;
+                    nodeIndex = -1;
+                }
+                if (ctx.hasDIV()) {
+                    nodeValue = LVal / RVal;
+                    nodeIndex = -1;
+                }
+                if (ctx.hasMOD()) {
+                    nodeValue = LVal % RVal;
+                    nodeIndex = -1;
+                }
+            } else {
+                if (!ctx.hasMOD()) {
+                    nodeIndex = table.getNewRegister();
+                    if (ctx.hasMUL())
+                        System.out.printf("\t%%v%d = mul i32 ", nodeIndex);
+                    if (ctx.hasDIV())
+                        System.out.printf("\t%%v%d = sdiv i32 ", nodeIndex);
+                    if (LCan)
+                        System.out.printf("%d, ", LVal);
+                    else
+                        System.out.printf("%%v%d, ", LIdx);
+                    if (RCan)
+                        System.out.printf("%d\n", RVal);
+                    else
+                        System.out.printf("%%v%d\n", RIdx);
+                } else {
+                    int tmpNodeIndex = table.getNewRegister();
+                    System.out.printf("\t%%v%d = sdiv i32 ", tmpNodeIndex);
+                    if (LCan)
+                        System.out.printf("%d, ", LVal);
+                    else
+                        System.out.printf("%%v%d, ", LIdx);
+                    if (RCan)
+                        System.out.printf("%d\n", RVal);
+                    else
+                        System.out.printf("%%v%d\n", RIdx);
+                    nodeIndex = table.getNewRegister();
+                    System.out.printf("\t%%v%d = sub i32 ", nodeIndex);
+                    if (LCan)
+                        System.out.printf("%d, ", LVal);
+                    else
+                        System.out.printf("%%v%d, ", LIdx);
+                    System.out.printf("%d\n", tmpNodeIndex);
+                }
+            }
+        } else {
+            return visitChild(ctx);
+        }
+        return null;
+    }
 
-    public Void visitAddExp(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitAddExp(ASTNode ctx) {
+        if (ctx.hasAddExp()) {
+            int LVal, RVal, LIdx, RIdx; boolean LCan, RCan;
+            visit(ctx.addExp());
+            LVal = nodeValue; LIdx = nodeIndex; LCan = canCalc;
+            visit(ctx.mulExp());
+            RVal = nodeValue; RIdx = nodeIndex; RCan = canCalc;
+            canCalc = LCan & RCan;
+            if (canCalc) {
+                if (ctx.hasPLUS()) {
+                    nodeValue = LVal + RVal;
+                    nodeIndex = -1;
+                }
+                if (ctx.hasMINUS()) {
+                    nodeValue = LVal - RVal;
+                    nodeIndex = -1;
+                }
+            } else {
+                nodeIndex = table.getNewRegister();
+                if (ctx.hasPLUS())
+                    System.out.printf("\t%%v%d = add i32 ", nodeIndex);
+                if (ctx.hasMINUS())
+                    System.out.printf("\t%%v%d = sub i32 ", nodeIndex);
+                if (LCan)
+                    System.out.printf("%d, ", LVal);
+                else
+                    System.out.printf("%%v%d, ", LIdx);
+                if (RCan)
+                    System.out.printf("%d\n", RVal);
+                else
+                    System.out.printf("%%v%d\n", RIdx);
+            }
+        } else {
+            visitChild(ctx);
+        }
+        return null;
+    }
 
     public Void visitRelExp(ASTNode ctx) { return visitChild(ctx);}
 

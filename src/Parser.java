@@ -686,7 +686,18 @@ public class Parser {
             }
             res.addChild(parseUnaryExp());
         }
-        return res;
+        ArrayList<ASTNode> childs = res.getChilds();
+        int len = childs.size();
+        ASTNode trueRes = new ASTNode(ASTNodeType.mulExp);
+        trueRes.addChild(childs.get(0));
+        for (int i = 1;i < len;i += 2) {
+            ASTNode tmp = new ASTNode(ASTNodeType.mulExp);
+            tmp.addChild(trueRes);
+            tmp.addChild(childs.get(i));
+            tmp.addChild(childs.get(i + 1));
+            trueRes = tmp;
+        }
+        return trueRes;
     }
 
     private ASTNode parseAddExp() throws ParseException {
@@ -700,7 +711,18 @@ public class Parser {
                 res.addChild(parseMINUS());
             res.addChild(parseMulExp());
         }
-        return res;
+        ArrayList<ASTNode> childs = res.getChilds();
+        int len = childs.size();
+        ASTNode trueRes = new ASTNode(ASTNodeType.addExp);
+        trueRes.addChild(childs.get(0));
+        for (int i = 1;i < len;i += 2) {
+            ASTNode tmp = new ASTNode(ASTNodeType.addExp);
+            tmp.addChild(trueRes);
+            tmp.addChild(childs.get(i));
+            tmp.addChild(childs.get(i + 1));
+            trueRes = tmp;
+        }
+        return trueRes;
     }
 
     private ASTNode parseRelExp() throws ParseException {
@@ -718,7 +740,18 @@ public class Parser {
             }
             res.addChild(parseAddExp());
         }
-        return res;
+        ArrayList<ASTNode> childs = res.getChilds();
+        int len = childs.size();
+        ASTNode trueRes = new ASTNode(ASTNodeType.relExp);
+        trueRes.addChild(childs.get(0));
+        for (int i = 1;i < len;i += 2) {
+            ASTNode tmp = new ASTNode(ASTNodeType.relExp);
+            tmp.addChild(trueRes);
+            tmp.addChild(childs.get(i));
+            tmp.addChild(childs.get(i + 1));
+            trueRes = tmp;
+        }
+        return trueRes;
     }
 
     private ASTNode parseEqExp() throws ParseException {
@@ -732,7 +765,18 @@ public class Parser {
                 res.addChild(parseNOT_EQ());
             res.addChild(parseRelExp());
         }
-        return res;
+        ArrayList<ASTNode> childs = res.getChilds();
+        int len = childs.size();
+        ASTNode trueRes = new ASTNode(ASTNodeType.eqExp);
+        trueRes.addChild(childs.get(0));
+        for (int i = 1;i < len;i += 2) {
+            ASTNode tmp = new ASTNode(ASTNodeType.eqExp);
+            tmp.addChild(trueRes);
+            tmp.addChild(childs.get(i));
+            tmp.addChild(childs.get(i + 1));
+            trueRes = tmp;
+        }
+        return trueRes;
     }
 
     private ASTNode parseLAndExp() throws ParseException {
@@ -742,7 +786,18 @@ public class Parser {
             res.addChild(parseAND());
             res.addChild(parseEqExp());
         }
-        return res;
+        ArrayList<ASTNode> childs = res.getChilds();
+        int len = childs.size();
+        ASTNode trueRes = new ASTNode(ASTNodeType.lAndExp);
+        trueRes.addChild(childs.get(0));
+        for (int i = 1;i < len;i += 2) {
+            ASTNode tmp = new ASTNode(ASTNodeType.lAndExp);
+            tmp.addChild(trueRes);
+            tmp.addChild(childs.get(i));
+            tmp.addChild(childs.get(i + 1));
+            trueRes = tmp;
+        }
+        return trueRes;
     }
 
     private ASTNode parseLOrExp() throws ParseException {
@@ -752,7 +807,18 @@ public class Parser {
             res.addChild(parseOR());
             res.addChild(parseLAndExp());
         }
-        return res;
+        ArrayList<ASTNode> childs = res.getChilds();
+        int len = childs.size();
+        ASTNode trueRes = new ASTNode(ASTNodeType.lOrExp);
+        trueRes.addChild(childs.get(0));
+        for (int i = 1;i < len;i += 2) {
+            ASTNode tmp = new ASTNode(ASTNodeType.lOrExp);
+            tmp.addChild(trueRes);
+            tmp.addChild(childs.get(i));
+            tmp.addChild(childs.get(i + 1));
+            trueRes = tmp;
+        }
+        return trueRes;
     }
 
     private ASTNode parseConstExp() throws ParseException {

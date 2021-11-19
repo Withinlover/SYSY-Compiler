@@ -5,3 +5,11 @@ image = { source = "dockerfile", path = ".", tag = "lab1" }
 run = [
   "java Main $input  $ir",
 ]
+
+[jobs.lab2]
+
+image = { source = "dockerfile", path = ".", tag = "lab2" }
+
+run = [
+  "java Main $input  $ir",
+]
