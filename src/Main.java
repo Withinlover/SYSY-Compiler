@@ -12,6 +12,7 @@ public class Main {
         StringBuilder builder = new StringBuilder();
         while (scanner.hasNextLine())
             builder.append(scanner.nextLine()).append('\n');
+        System.out.println(builder);
         // 重定向输出流
         PrintStream printStream = new PrintStream(new FileOutputStream(args[1]));
         System.setOut(printStream);
