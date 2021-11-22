@@ -267,7 +267,12 @@ public class Visitor {
         return null;
     }
 
-    public Void visitInitVal(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitInitVal(ASTNode ctx) {
+        needLValIndex = true;
+        visitChild(ctx);
+        needLValIndex = false;
+        return null;
+    }
 
     public Void visitFuncDef(ASTNode ctx) {
         String res = "define dso_local i32 ";
@@ -446,39 +451,21 @@ public class Visitor {
                     nodeIndex = -1;
                 }
             } else {
-                if (!ctx.hasMOD()) {
-                    nodeIndex = table.getNewRegister();
-                    if (ctx.hasMUL())
-                        System.out.printf("\t%%v%d = mul i32 ", nodeIndex);
-                    if (ctx.hasDIV())
-                        System.out.printf("\t%%v%d = sdiv i32 ", nodeIndex);
-                    if (LCan)
-                        System.out.printf("%d, ", LVal);
-                    else
-                        System.out.printf("%%v%d, ", LIdx);
-                    if (RCan)
-                        System.out.printf("%d\n", RVal);
-                    else
-                        System.out.printf("%%v%d\n", RIdx);
-                } else {
-                    int tmpNodeIndex = table.getNewRegister();
-                    System.out.printf("\t%%v%d = sdiv i32 ", tmpNodeIndex);
-                    if (LCan)
-                        System.out.printf("%d, ", LVal);
-                    else
-                        System.out.printf("%%v%d, ", LIdx);
-                    if (RCan)
-                        System.out.printf("%d\n", RVal);
-                    else
-                        System.out.printf("%%v%d\n", RIdx);
-                    nodeIndex = table.getNewRegister();
-                    System.out.printf("\t%%v%d = sub i32 ", nodeIndex);
-                    if (LCan)
-                        System.out.printf("%d, ", LVal);
-                    else
-                        System.out.printf("%%v%d, ", LIdx);
-                    System.out.printf("%d\n", tmpNodeIndex);
-                }
+                nodeIndex = table.getNewRegister();
+                if (ctx.hasMUL())
+                    System.out.printf("\t%%v%d = mul i32 ", nodeIndex);
+                if (ctx.hasDIV())
+                    System.out.printf("\t%%v%d = sdiv i32 ", nodeIndex);
+                if (ctx.hasMOD())
+                    System.out.printf("\t%%v%d = srem i32 ", nodeIndex);
+                if (LCan)
+                    System.out.printf("%d, ", LVal);
+                else
+                    System.out.printf("%%v%d, ", LIdx);
+                if (RCan)
+                    System.out.printf("%d\n", RVal);
+                else
+                    System.out.printf("%%v%d\n", RIdx);
             }
         } else {
             return visitChild(ctx);
