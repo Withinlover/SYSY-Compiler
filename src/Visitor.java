@@ -370,6 +370,27 @@ public class Visitor {
             System.out.printf("\nb%d:\n", nxtIndex);
 
         }
+        else if (ctx.hasWHILE()) {
+            int condIndex, bodyIndex, nxtIndex;
+
+            condIndex = table.getNewBlock();
+            bodyIndex = table.getNewBlock();
+            nxtIndex = table.getNewBlock();
+            trueBlock = bodyIndex; falseBlock = nxtIndex;
+
+            System.out.printf("\tbr label %%b%d\n", condIndex);
+            System.out.printf("\nb%d:\n", condIndex);
+
+            visit(ctx.cond());
+            ASTNode ctx_OR = ctx.cond().lOrExp();
+            if (!ctx_OR.hasOR() && !ctx_OR.lAndExp().hasAND())
+                System.out.printf("\tbr i1 %%v%d, label %%b%d, label %%b%d\n", nodeIndex, bodyIndex, nxtIndex);
+
+            System.out.printf("\nb%d:\n", bodyIndex);
+            visit(ctx.stmt());
+            System.out.printf("\tbr label %%b%d\n", condIndex);
+            System.out.printf("\nb%d:\n", nxtIndex);
+        }
         else {
             visitChild(ctx);
         }
