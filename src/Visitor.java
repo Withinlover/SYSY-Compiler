@@ -291,7 +291,12 @@ public class Visitor {
 
     public Void visitFuncFParam(ASTNode ctx) { return visitChild(ctx);}
 
-    public Void visitBlock(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitBlock(ASTNode ctx) {
+        table.allocNewBlock();
+        visitChild(ctx);
+        table.exitCurrentBlock();
+        return null;
+    }
 
     public Void visitBlockItem(ASTNode ctx) { return visitChild(ctx);}
 
