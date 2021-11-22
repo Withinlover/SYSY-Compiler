@@ -1,4 +1,3 @@
-import javax.naming.ldap.LdapContext;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -12,10 +11,12 @@ public class Visitor {
     private int nodeIndex = -114514;
     private int nodePointer = -114514;
     private int trueBlock = -1, falseBlock = -1;
+    private Symbol currentSymbol = null;
+    private boolean isGlobalVariable = false;
     private boolean needLValIndex = true;
     private boolean onlyVariable = false;
     private boolean canCalc;
-    private final SymbolTable table = new SymbolTable();
+    public final SymbolTable table = new SymbolTable();
 
     private int dep = 0;
     public int DEBUG = 0;
@@ -188,19 +189,20 @@ public class Visitor {
     public Void visitCompUnit(ASTNode ctx) {
         ArrayList<Integer> params;
 
-        params = new ArrayList<>();
-        table.allocNewFunction("getint", params, 1);
+        if (ctx.hasDecl()) {
+            isGlobalVariable = true;
+            visit(ctx.decl());
+            isGlobalVariable = false;
+        }
 
-        params = new ArrayList<>();
-        table.allocNewFunction("getch", params, 1);
+        if (ctx.hasFuncDef()) {
+            visit(ctx.funcDef());
+        }
 
-        params = new ArrayList<>(); params.add(1);
-        table.allocNewFunction("putint", params, 0);
+        if (ctx.hasCompUnit())
+            visit(ctx.compUnit());
 
-        params = new ArrayList<>(); params.add(1);
-        table.allocNewFunction("putch", params, 0);
-
-        return visitChild(ctx);
+        return null;
     }
 
     public Void visitDecl(ASTNode ctx) { return visitChild(ctx);}
@@ -220,13 +222,17 @@ public class Visitor {
                 System.exit(-1);
             }
             Symbol symbol = table.allocInteger(name, 1);
-            System.out.printf("\t%%v%d = alloca i32\n", symbol.getIndex());
+            if (!isGlobalVariable)
+                System.out.printf("\t%%v%d = alloca i32\n", symbol.getIndex());
+            else
+                symbol.setGlobal(true);
             // TODO 数组
             if (ctx.hasConstInitial()) {
                 visit(ctx.constInitial());
                 if (canCalc) {
                     // 如果可以计算，则结果保存在 nodeValue 中
-                    System.out.printf("\tstore i32 %d, i32* %%v%d\n", nodeValue, symbol.getIndex());
+                    if (!isGlobalVariable)
+                        System.out.printf("\tstore i32 %d, i32* %%v%d\n", nodeValue, symbol.getIndex());
                     symbol.setConstValue(nodeValue);
                 } else {
                     // 如果不可以计算，则返回-1
@@ -253,18 +259,32 @@ public class Visitor {
                 System.exit(-1);
             }
             Symbol symbol = table.allocInteger(name, 0);
-            System.out.printf("\t%%v%d = alloca i32\n", symbol.getIndex());
-            // TODO 数组
+            if (isGlobalVariable) symbol.setGlobal(true);
+            if (!isGlobalVariable)
+                System.out.printf("\t%%v%d = alloca i32\n", symbol.getIndex());
+            int initValue = 0;
             if (ctx.hasInitVal()) {
                 visit(ctx.initVal());
-                if (canCalc) {
-                    // 如果可以计算，则结果保存在 nodeValue 中
-                    System.out.printf("\tstore i32 %d, i32* %%v%d\n", nodeValue, symbol.getIndex());
+                if (!isGlobalVariable) {
+                    if (canCalc) {
+                        // 如果可以计算，则结果保存在 nodeValue 中
+                        System.out.printf("\tstore i32 %d, i32* %%v%d\n", nodeValue, symbol.getIndex());
+                    } else {
+                        // 如果不可以计算，则结果保存在 nodeIndex 寄存器中
+                        System.out.printf("\tstore i32 %%v%d, i32* %%v%d\n", nodeIndex, symbol.getIndex());
+                    }
                 } else {
-                    // 如果不可以计算，则结果保存在 nodeIndex 寄存器中
-                    System.out.printf("\tstore i32 %%v%d, i32* %%v%d\n", nodeIndex, symbol.getIndex());
+                    if (canCalc)
+                        initValue = nodeValue;
+                    else {
+                        System.out.println("全局变量必须用常量作为初始值");
+                        System.exit(-1);
+                    }
                 }
             }
+            // @a = dso_local global i32 5
+            if (isGlobalVariable)
+                System.out.printf("@%s = dso_local global i32 %d\n\n", symbol.getName(), initValue);
         }
         return null;
     }
@@ -359,6 +379,7 @@ public class Visitor {
     public Void visitLVal(ASTNode ctx) {
         String name = ctx.ident().getToken().getText();
         Symbol symbol = table.find(name);
+        currentSymbol = symbol;
         if (name == null || symbol == null) {
             System.out.println("变量尚未定义：" + name);
             System.exit(-1);
@@ -369,7 +390,10 @@ public class Visitor {
             nodePointer = table.find(name).getIndex();
             if (needLValIndex) {
                 nodeIndex = table.getNewRegister();
-                System.out.printf("\t%%v%d = load i32, i32* %%v%d\n", nodeIndex, table.find(name).getIndex());
+                if (!symbol.isGlobal())
+                    System.out.printf("\t%%v%d = load i32, i32* %%v%d\n", nodeIndex, table.find(name).getIndex());
+                else
+                    System.out.printf("\t%%v%d = load i32, i32* @%s\n", nodeIndex, name);
             } else {
                 nodeIndex = -1;
             }
