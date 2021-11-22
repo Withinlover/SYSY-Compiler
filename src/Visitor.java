@@ -319,7 +319,7 @@ public class Visitor {
                 System.out.printf("\tret i32 %%v%d\n", nodeIndex);
         }
         else if (ctx.hasIF()) {
-            int ifIndex = -1, elseIndex = -2, nxtIndex = -3;
+            int ifIndex, elseIndex, nxtIndex;
 
             ifIndex = table.getNewBlock();
             elseIndex = table.getNewBlock();
@@ -620,18 +620,15 @@ public class Visitor {
         }
 
         else {
-            int LIdx, RIdx;
             int BTrue = trueBlock, BFalse = falseBlock;
             int BLTrue = table.getNewBlock();
             trueBlock = BLTrue; falseBlock = BFalse;
-            visit(ctx.lAndExp()); LIdx = nodeIndex;
-            System.out.printf("\tbr i1 %%v%d, label %%b%d, label %%b%d\n", LIdx, BLTrue, BFalse);
+            visit(ctx.lAndExp());
             System.out.printf("\nb%d:\n", BLTrue);
-            visit(ctx.eqExp()); RIdx = nodeIndex;
-            nodeIndex = table.getNewRegister();
+            visit(ctx.eqExp());
+            int RIdx = nodeIndex; nodeIndex = table.getNewRegister();
             System.out.printf("\t%%v%d = icmp ne i32 %%v%d, 0\n", nodeIndex, RIdx);
-            RIdx = nodeIndex;
-            System.out.printf("\tbr i1 %%v%d, label %%b%d, label %%b%d\n", RIdx, BTrue, BFalse);
+            System.out.printf("\tbr i1 %%v%d, label %%b%d, label %%b%d\n", nodeIndex, BTrue, BFalse);
         }
         return null;
     }
@@ -639,16 +636,13 @@ public class Visitor {
     public Void visitLOrExp(ASTNode ctx) {
         if (!ctx.hasOR()) visitChild(ctx);
         else {
-            int LIdx, RIdx;
             int BTrue = trueBlock, BFalse = falseBlock;
             int BLFalse = table.getNewBlock();
             trueBlock = BTrue; falseBlock = BLFalse;
-            visit(ctx.lOrExp()); LIdx = nodeIndex;
-            System.out.printf("\tbr i1 %%v%d, label %%b%d, label %%b%d\n", LIdx, BTrue, BLFalse);
+            visit(ctx.lOrExp());
             System.out.printf("\nb%d:\n", BLFalse);
             trueBlock = BTrue; falseBlock = BFalse;
-            visit(ctx.lAndExp()); RIdx = nodeIndex;
-//            System.out.printf("\tbr i1 %%v%d, label %%b%d, label %%b%d\n", RIdx, BTrue, BFalse);
+            visit(ctx.lAndExp());
         }
         return null;
     }
