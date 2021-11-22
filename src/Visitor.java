@@ -1,3 +1,4 @@
+import javax.naming.ldap.LdapContext;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -10,7 +11,8 @@ public class Visitor {
     private int nodeValue = -114514;
     private int nodeIndex = -114514;
     private int nodePointer = -114514;
-    private boolean needLValIndex = false;
+    private int trueBlock = -1, falseBlock = -1;
+    private boolean needLValIndex = true;
     private boolean onlyVariable = false;
     private boolean canCalc;
     private final SymbolTable table = new SymbolTable();
@@ -268,9 +270,7 @@ public class Visitor {
     }
 
     public Void visitInitVal(ASTNode ctx) {
-        needLValIndex = true;
         visitChild(ctx);
-        needLValIndex = false;
         return null;
     }
 
@@ -299,9 +299,9 @@ public class Visitor {
         if (ctx.hasLVal()) {
             int LIndex, RVal, RIdx; boolean RCan;
             needLValIndex = false; onlyVariable = true;
-            visit(ctx.lVal());
-            LIndex = nodePointer; onlyVariable = false; needLValIndex = true;
-            visit(ctx.exp()); needLValIndex = false;
+            visit(ctx.lVal()); LIndex = nodePointer;
+            onlyVariable = false; needLValIndex = true;
+            visit(ctx.exp());
             RVal = nodeValue; RIdx = nodeIndex; RCan = canCalc;
             System.out.print("\tstore i32 ");
             if (RCan) {
@@ -310,15 +310,38 @@ public class Visitor {
                 System.out.printf("%%v%d, ", RIdx);
             }
             System.out.printf("i32* %%v%d\n", LIndex);
-        } else if (ctx.hasRETURN()) {
-            needLValIndex = true;
+        }
+        else if (ctx.hasRETURN()) {
             visitChild(ctx);
-            needLValIndex = false;
             if (canCalc)
                 System.out.printf("\tret i32 %d\n", nodeValue);
             else
                 System.out.printf("\tret i32 %%v%d\n", nodeIndex);
-        } else {
+        }
+        else if (ctx.hasIF()) {
+            int ifIndex = -1, elseIndex = -2, nxtIndex = -3;
+
+            ifIndex = table.getNewBlock();
+            elseIndex = table.getNewBlock();
+            nxtIndex = table.getNewBlock();
+            trueBlock = ifIndex; falseBlock = elseIndex;
+
+            visit(ctx.cond());
+            ASTNode ctx_OR = ctx.cond().lOrExp();
+            if (!ctx_OR.hasOR() && !ctx_OR.lAndExp().hasAND())
+                System.out.printf("\tbr i1 %%v%d, label %%b%d, label %%b%d\n", nodeIndex, ifIndex, elseIndex);
+
+            System.out.printf("\nb%d:\n", ifIndex);
+            visit(ctx.stmt());
+            System.out.printf("\tbr label %%b%d\n", nxtIndex);
+            System.out.printf("\nb%d:\n", elseIndex);
+            if (ctx.hasELSE())
+                visit(ctx.stmt(1));
+            System.out.printf("\tbr label %%b%d\n", nxtIndex);
+            System.out.printf("\nb%d:\n", nxtIndex);
+
+        }
+        else {
             visitChild(ctx);
         }
         return null;
@@ -362,7 +385,6 @@ public class Visitor {
 
     public Void visitUnaryExp(ASTNode ctx) {
         if (ctx.hasIdent()) {
-            needLValIndex = true;
             String name = ctx.ident().getToken().getText();
             if (!table.checkFunction(name)) {
                 ArrayList<Integer> params = table.getFunctionParams(name);
@@ -407,12 +429,13 @@ public class Visitor {
                 System.out.println("函数未定义:" + name);
                 System.exit(-1);
             }
-            needLValIndex = false;
         } else if (ctx.hasUnaryOp()) {
             visit(ctx.unaryExp());
             if (canCalc) {
                 if (ctx.unaryOp().hasMINUS())
                     nodeValue = -nodeValue;
+                if (ctx.unaryOp().hasNOT())
+                    nodeValue = nodeValue == 0 ? 1 : 0;
             } else {
                 if (nodeValue < 0 && nodeIndex < 0) {
                     System.out.println("表达式中引用了没有返回值的函数");
@@ -422,6 +445,13 @@ public class Visitor {
                     int tmp = nodeIndex;
                     nodeIndex = table.getNewRegister();
                     System.out.printf("\t%%v%d = sub i32 0, %%v%d\n", nodeIndex, tmp);
+                }
+                if (ctx.unaryOp().hasNOT()) {
+                    // %3 = icmp eq i32 %2, 0
+                    // %4 = zext i1 %3 to i32
+                    int tmp1 = nodeIndex, tmp2 = table.getNewRegister(); nodeIndex = table.getNewRegister();
+                    System.out.printf("\t%%v%d = icmp eq i32 %%v%d, 0\n", tmp2, tmp1);
+                    System.out.printf("\t%%v%d = zext i1 %%v%d to i32\n", nodeIndex, tmp2);
                 }
             }
         } else {
@@ -516,13 +546,97 @@ public class Visitor {
         return null;
     }
 
-    public Void visitRelExp(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitRelExp(ASTNode ctx) {
+        // %6 = icmp sgt i32 %4, %5
+        if (ctx.getChilds().size() > 1) {
+            int LVal, LIdx, RVal, RIdx; boolean LCan, RCan;
+            visit(ctx.relExp());
+            LVal = nodeValue; LIdx = nodeIndex; LCan = canCalc;
+            visit(ctx.addExp());
+            RVal = nodeValue; RIdx = nodeIndex; RCan = canCalc;
 
-    public Void visitEqExp(ASTNode ctx) { return visitChild(ctx);}
+            canCalc = false;
+            nodeValue = -1;
+            nodeIndex = table.getNewRegister();
+            System.out.printf("\t%%v%d = icmp ", nodeIndex);
+            switch (ctx.getChilds().get(1).getType()) {
+                case LT -> System.out.print("slt ");
+                case LT_EQ -> System.out.print("sle ");
+                case GT -> System.out.print("sgt ");
+                case GT_EQ -> System.out.print("sge ");
+            }
+            System.out.print("i32 ");
+            if (LCan) System.out.printf("%d, ", LVal);
+            else System.out.printf("%%v%d, ", LIdx);
+            if (RCan) System.out.printf("%d\n", RVal);
+            else System.out.printf("%%v%d\n", RIdx);
+            // %7 = zext i1 %6 to i32
+            int tmp = nodeIndex; nodeIndex = table.getNewRegister();
+            System.out.printf("\t%%v%d = zext i1 %%v%d to i32\n", nodeIndex, tmp);
+        }
+        else {
+            visitChild(ctx);
+        }
+        return null;
+    }
 
-    public Void visitLAndExp(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitEqExp(ASTNode ctx) {
+        if (ctx.hasEqExp()) {
+            int LIdx, RIdx, RVal, tmp; boolean RCan;
+            visit(ctx.eqExp()); LIdx = nodeIndex;
+            visit(ctx.relExp()); RIdx = nodeIndex; RVal = nodeValue; RCan = canCalc;
+            nodeIndex = table.getNewRegister();
+            // %7 = zext i1 %6 to i32
+            System.out.printf("\t%%v%d = zext i1 %%v%d to i32\n", nodeIndex, LIdx);
+            LIdx = nodeIndex; nodeIndex = table.getNewRegister();
+            // %8 = icmp eq i32 %7, 1
+            if (ctx.hasEQ()) {
+                System.out.printf("\t%%v%d = icmp eq i32 %%v%d, ", nodeIndex, LIdx);
+            } else {
+                System.out.printf("\t%%v%d = icmp ne i32 %%v%d, ", nodeIndex, LIdx);
+            }
+            if (RCan) System.out.printf("%d\n", RVal);
+            else System.out.printf("%%v%d\n", RIdx);
+        } else {
+            visitChild(ctx); int tmp = nodeIndex;
+            nodeIndex = table.getNewRegister();
+            if (canCalc) System.out.printf("\t%%v%d = icmp ne i32 %d, 0\n", nodeIndex, nodeValue);
+            else System.out.printf("\t%%v%d = icmp ne i32 %%v%d, 0\n", nodeIndex, tmp);
+        }
+        return null;
+    }
 
-    public Void visitLOrExp(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitLAndExp(ASTNode ctx) { // return i1
+        if (!ctx.hasAND())
+            visitChild(ctx);
+        else {
+            int LIdx, RIdx;
+            int BTrue = trueBlock, BFalse = falseBlock;
+            int BLTrue = table.getNewBlock();
+            visit(ctx.lAndExp()); LIdx = nodeIndex;
+            System.out.printf("\tbr i1 %%v%d, label %%b%d, label %%b%d\n", LIdx, BLTrue, BFalse);
+            System.out.printf("\nb%d:\n", BLTrue);
+            visit(ctx.eqExp()); RIdx = nodeIndex;
+            System.out.printf("\tbr i1 %%v%d, label %%b%d, label %%b%d\n", RIdx, BTrue, BFalse);
+        }
+        return null;
+    }
+
+    public Void visitLOrExp(ASTNode ctx) {
+        if (!ctx.hasOR()) visitChild(ctx);
+        else {
+            int LIdx, RIdx;
+            int BTrue = trueBlock, BFalse = falseBlock;
+            int BLFalse = table.getNewBlock();
+            trueBlock = BTrue; falseBlock = BLFalse;
+            visit(ctx.lOrExp()); LIdx = nodeIndex;
+            System.out.printf("\tbr i1 %%v%d, label %%b%d, label %%b%d\n", LIdx, BTrue, BLFalse);
+            System.out.printf("\nb%d:\n", BLFalse);
+            visit(ctx.lAndExp()); RIdx = nodeIndex;
+            System.out.printf("\tbr i1 %%v%d, label %%b%d, label %%b%d\n", RIdx, BTrue, BFalse);
+        }
+        return null;
+    }
 
     public Void visitConstExp(ASTNode ctx) { return visitChild(ctx);}
 
