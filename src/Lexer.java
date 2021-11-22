@@ -24,14 +24,6 @@ public class Lexer {
         str.append("(?!)");
         for (Rule item : rules)
             str.append("|(").append(item.getRegexp()).append(")");
-        StringBuilder str2 = new StringBuilder();
-
-        // 检查词法 -> 词法必须完全正确
-        str2.append("^(").append(str.toString()).append(")+$");
-        if (!file.matches(str2.toString())) {
-            System.out.println("Compile Error");
-            System.exit(-1);
-        }
 
         // 逐个查找
         Pattern pattern = Pattern.compile(str.toString());

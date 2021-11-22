@@ -418,6 +418,11 @@ public class Visitor {
                     System.out.println("表达式中引用了没有返回值的函数");
                     System.exit(-1);
                 }
+                if (ctx.unaryOp().hasMINUS()) {
+                    int tmp = nodeIndex;
+                    nodeIndex = table.getNewRegister();
+                    System.out.printf("\t%%v%d = sub i32 0, %%v%d\n", nodeIndex, tmp);
+                }
             }
         } else {
             visitChild(ctx);
