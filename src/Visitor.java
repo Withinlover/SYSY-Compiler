@@ -11,6 +11,7 @@ public class Visitor {
     private int nodeIndex = -114514;
     private int nodePointer = -114514;
     private boolean needLValIndex = false;
+    private boolean onlyVariable = false;
     private boolean canCalc;
     private final SymbolTable table = new SymbolTable();
 
@@ -292,9 +293,10 @@ public class Visitor {
     public Void visitStmt(ASTNode ctx) {
         if (ctx.hasLVal()) {
             int LIndex, RVal, RIdx; boolean RCan;
-            needLValIndex = false;
-            visit(ctx.lVal()); LIndex = nodePointer;
-            visit(ctx.exp());
+            needLValIndex = false; onlyVariable = true;
+            visit(ctx.lVal());
+            LIndex = nodePointer; onlyVariable = false; needLValIndex = true;
+            visit(ctx.exp()); needLValIndex = false;
             RVal = nodeValue; RIdx = nodeIndex; RCan = canCalc;
             System.out.print("\tstore i32 ");
             if (RCan) {
@@ -304,7 +306,9 @@ public class Visitor {
             }
             System.out.printf("i32* %%v%d\n", LIndex);
         } else if (ctx.hasRETURN()) {
+            needLValIndex = true;
             visitChild(ctx);
+            needLValIndex = false;
             if (canCalc)
                 System.out.printf("\tret i32 %d\n", nodeValue);
             else
@@ -322,7 +326,11 @@ public class Visitor {
     public Void visitLVal(ASTNode ctx) {
         String name = ctx.ident().getToken().getText();
         Symbol symbol = table.find(name);
-        if (name != null && symbol.isVariable()) {
+        if (name == null || symbol == null) {
+            System.out.println("变量尚未定义：" + name);
+            System.exit(-1);
+        }
+        if (symbol.isVariable()) {
             canCalc = false;
             nodeValue = -1;
             nodePointer = table.find(name).getIndex();
@@ -333,8 +341,14 @@ public class Visitor {
                 nodeIndex = -1;
             }
         } else {
-            System.out.printf("变量尚未定义或使用常量作为左值：%s\n", name);
-            System.exit(-1);
+            assert (symbol.isConstant());
+            if (onlyVariable) {
+                System.out.println("不能对常量赋值: " + name);
+                System.exit(-1);
+            }
+            canCalc = true;
+            nodeValue = symbol.getConstValue();
+            nodeIndex = nodePointer = -1;
         }
         return null;
     }
@@ -378,9 +392,9 @@ public class Visitor {
                     if (i != 0) System.out.print(", ");
                     int param = paramIndex.get(i), kind = paramType.get(i);
                     if (kind == 0) {
-                        System.out.printf("%d", param);
+                        System.out.printf("i32 %d", param);
                     } else {
-                        System.out.printf("%%v%d", param);
+                        System.out.printf("i32 %%v%d", param);
                     }
                 }
                 System.out.println(")");
