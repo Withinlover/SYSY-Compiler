@@ -1,4 +1,3 @@
-import javax.sound.midi.Sequencer;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -12,6 +11,7 @@ public class Visitor {
     private int nodeIndex = -114514;
     private int nodePointer = -114514;
     private int trueBlock = -1, falseBlock = -1;
+    private int currentCondIndex, currentNxtIndex;
     private Symbol currentSymbol = null;
     private boolean isGlobalVariable = false;
     private boolean needLValIndex = true;
@@ -378,6 +378,11 @@ public class Visitor {
             nxtIndex = table.getNewBlock();
             trueBlock = bodyIndex; falseBlock = nxtIndex;
 
+            int lastCondIndex = currentCondIndex;
+            int lastNxtIndex = currentNxtIndex;
+            currentCondIndex = condIndex;
+            currentNxtIndex = nxtIndex;
+
             System.out.printf("\tbr label %%b%d\n", condIndex);
             System.out.printf("\nb%d:\n", condIndex);
 
@@ -390,6 +395,16 @@ public class Visitor {
             visit(ctx.stmt());
             System.out.printf("\tbr label %%b%d\n", condIndex);
             System.out.printf("\nb%d:\n", nxtIndex);
+
+            currentNxtIndex = lastNxtIndex;
+            currentCondIndex = lastCondIndex;
+
+        }
+        else if (ctx.hasCONTINUE()) {
+            System.out.printf("\tbr label %%b%d\n", currentCondIndex);
+        }
+        else if (ctx.hasBREAK()) {
+            System.out.printf("\tbr label %%b%d\n", currentNxtIndex);
         }
         else {
             visitChild(ctx);
