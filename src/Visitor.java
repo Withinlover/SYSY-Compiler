@@ -616,6 +616,7 @@ public class Visitor {
             int tmp = nodeIndex;
             nodeIndex = table.getNewRegister();
             System.out.printf("\t%%v%d = icmp ne i32 %%v%d, 0\n", nodeIndex, tmp);
+            System.out.printf("\tbr i1 %%v%d, label %%b%d, label %%b%d\n", nodeIndex, trueBlock, falseBlock);
         }
 
         else {
