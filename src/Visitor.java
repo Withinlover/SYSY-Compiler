@@ -1,3 +1,4 @@
+import javax.sound.midi.Sequencer;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -322,10 +323,10 @@ public class Visitor {
 
     public Void visitStmt(ASTNode ctx) {
         if (ctx.hasLVal()) {
-            int LIndex, RVal, RIdx; boolean RCan;
+            int LIndex, RVal, RIdx; boolean RCan; Symbol symbol;
             needLValIndex = false; onlyVariable = true;
-            visit(ctx.lVal()); LIndex = nodePointer;
-            onlyVariable = false; needLValIndex = true;
+            visit(ctx.lVal()); LIndex = nodePointer; symbol = currentSymbol;
+            needLValIndex = true; onlyVariable = false;
             visit(ctx.exp());
             RVal = nodeValue; RIdx = nodeIndex; RCan = canCalc;
             System.out.print("\tstore i32 ");
@@ -334,7 +335,10 @@ public class Visitor {
             } else {
                 System.out.printf("%%v%d, ", RIdx);
             }
-            System.out.printf("i32* %%v%d\n", LIndex);
+            if (symbol.isGlobal())
+                System.out.printf("i32* @%s\n", symbol.getName());
+            else
+                System.out.printf("i32* %%v%d\n", LIndex);
         }
         else if (ctx.hasRETURN()) {
             visitChild(ctx);
