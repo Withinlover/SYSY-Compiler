@@ -654,7 +654,8 @@ public class Visitor {
     public Void visitStmt(ASTNode ctx) {
         if (ctx.hasLVal()) {
             int LIndex, RVal, RIdx; boolean RCan; Symbol symbol;
-            needLValIndex = false; onlyVariable = true;
+//            needLValIndex = false;
+            onlyVariable = true;
             visit(ctx.lVal()); LIndex = nodePointer; symbol = currentSymbol;
             needLValIndex = true; onlyVariable = false;
             visit(ctx.exp());
@@ -665,7 +666,7 @@ public class Visitor {
             } else {
                 System.out.printf("%%v%d, ", RIdx);
             }
-            if (symbol.isGlobal())
+            if (symbol.isGlobal() && !symbol.isArray())
                 System.out.printf("i32* @%s\n", symbol.getName());
             else
                 System.out.printf("i32* %%v%d\n", LIndex);
@@ -762,6 +763,7 @@ public class Visitor {
             ArrayList<Integer> val = new ArrayList<>();
             ArrayList<Boolean> can = new ArrayList<>();
             boolean allCan = true;
+            needLValIndex = true;
             for (int index = 0; index < ctx.countExp(); ++index) {
                 visit(ctx.exp(index));
                 can.add(canCalc); allCan &= canCalc;
@@ -770,6 +772,7 @@ public class Visitor {
                 else
                     val.add(nodeIndex);
             }
+//            needLValIndex = false;
             if (symbol.isVariable() || (symbol.isConstant() && !allCan)) {
                 nodePointer = symbol.getIndex();
                 int tmp = table.getNewRegister();
@@ -870,7 +873,9 @@ public class Visitor {
                 ArrayList<Integer> paramIndex = new ArrayList<>();
                 ArrayList<Integer> paramType = new ArrayList<>();
                 for (int i = 0; i < params.size(); ++i) {
+                    needLValIndex = true;
                     visit(root.exp(i));
+//                    needLValIndex = false;
                     if (canCalc) {
                         paramIndex.add(nodeValue);
                         paramType.add(0);
