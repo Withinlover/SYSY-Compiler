@@ -1,9 +1,12 @@
+import javax.annotation.processing.SupportedSourceVersion;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.PrintStream;
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Scanner;
+import java.util.stream.StreamSupport;
 
 public class Visitor {
     private int declType; // void int array -> 0 1 2
@@ -217,35 +220,198 @@ public class Visitor {
 
     public Void visitConstDef(ASTNode ctx) {
         if (declType == 1) {
-            String name = ctx.ident().getToken().getText();
-            if (!table.checkName(name)) {
-                System.out.println("name repeated: " + name);
-                System.exit(-1);
-            }
-            Symbol symbol = table.allocInteger(name, 1);
-            if (!isGlobalVariable)
-                System.out.printf("\t%%v%d = alloca i32\n", symbol.getIndex());
-            else
-                symbol.setGlobal(true);
-            // TODO 数组
-            if (ctx.hasConstInitial()) {
-                visit(ctx.constInitial());
-                if (canCalc) {
-                    // 如果可以计算，则结果保存在 nodeValue 中
-                    if (!isGlobalVariable)
-                        System.out.printf("\tstore i32 %d, i32* %%v%d\n", nodeValue, symbol.getIndex());
-                    symbol.setConstValue(nodeValue);
-                } else {
-                    // 如果不可以计算，则返回-1
-                    System.out.println("常量必须可以计算");
+            if (ctx.hasConstExp()) {
+                String name = ctx.ident().getToken().getText();
+                if (!table.checkName(name)) {
+                    System.out.println("name repeated: " + name);
                     System.exit(-1);
                 }
+                int dim = ctx.countConstExp();
+                ArrayList<Integer> dims = new ArrayList<>();
+                for (int index = 0;index < dim; ++index) {
+                    visit(ctx.constExp(index));
+                    dims.add(nodeValue);
+                }
+                Symbol symbol = table.allocArray(name, 1);
+                symbol.setDims(dims);
+                // TODO symbol.setConstValue();
+                if (isGlobalVariable) {
+                    symbol.setGlobal(true);
+                    System.out.printf("@%s = dso_local global ", name);
+                    if (ctx.hasConstInitial()) {
+                        currentArrayDims = dims;
+                        currentInitialDims = -1;
+                        currentInitDims = new ArrayList<>();
+                        currentInitSymbol = symbol;
+                        isArrayInit = true;
+                        visit(ctx.constInitial());
+                        currentArrayDims = null;
+                        currentInitialDims = -1;
+                        currentInitDims = null;
+                        currentInitSymbol = null;
+                        isArrayInit = false;
+                        System.out.print("\n");
+                    } else {
+                        System.out.print("zeroinitializer\n");
+                    }
+                } else {
+                    System.out.printf("\t%%v%d = alloca ", symbol.getIndex());
+                    for (int length : dims)
+                        System.out.printf("[%d x ", length);
+                    System.out.print("i32");
+                    for (int index = 0;index < dim; ++index)
+                        System.out.print("]");
+                    System.out.print("\n");
+                    if (ctx.hasConstInitial()) {
+                        currentArrayDims = dims;
+                        currentInitialDims = -1;
+                        currentInitDims = new ArrayList<>();
+                        currentInitSymbol = symbol;
+                        isArrayInit = true;
+                        visit(ctx.constInitial());
+                        currentArrayDims = null;
+                        currentInitialDims = -1;
+                        currentInitDims = null;
+                        currentInitSymbol = null;
+                        isArrayInit = false;
+                    }
+                }
+            } else {
+                String name = ctx.ident().getToken().getText();
+                if (!table.checkName(name)) {
+                    System.out.println("name repeated: " + name);
+                    System.exit(-1);
+                }
+                Symbol symbol = table.allocInteger(name, 1);
+                if (!isGlobalVariable)
+                    System.out.printf("\t%%v%d = alloca i32\n", symbol.getIndex());
+                else
+                    symbol.setGlobal(true);
+                int initValue = 0;
+                if (ctx.hasConstInitial()) {
+                    visit(ctx.constInitial());
+                    if (canCalc) {
+                        // 如果可以计算，则结果保存在 nodeValue 中
+                        if (!isGlobalVariable)
+                            System.out.printf("\tstore i32 %d, i32* %%v%d\n", nodeValue, symbol.getIndex());
+                        initValue = nodeValue;
+                        symbol.setConstValue(nodeValue);
+                    } else {
+                        // 如果不可以计算，则返回-1
+                        System.out.println("常量必须可以计算");
+                        System.exit(-1);
+                    }
+                }
+                System.out.printf("@%s = dso_local global i32 %d\n\n", symbol.getName(), initValue);
             }
         }
         return null;
     }
 
-    public Void visitConstInitial(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitConstInitial(ASTNode ctx) {
+        if (isArrayInit) {
+            if (ctx.hasConstExp()) {
+                visitChild(ctx);
+                if (currentInitDims.size() != currentArrayDims.size()) {
+                    System.out.print("初始化的维度不匹配3！\n");
+                    System.exit(-1);
+                }
+
+                if (isGlobalVariable) {
+                    if (canCalc) {
+                        System.out.printf("i32 %d", nodeValue);
+                        currentInitSymbol.setConstArrayValue(currentInitDims, nodeValue);
+                    }
+                    else {
+                        System.out.println("初始值必须编译器可计算");
+                        System.exit(-1);
+                    }
+                } else {
+                    int tmp = table.getNewRegister();
+                    System.out.printf("\t%%v%d = getelementptr ", tmp);
+                    for (int length : currentArrayDims)
+                        System.out.printf("[%d x ", length);
+                    System.out.print("i32");
+                    for (int index = 0;index < currentArrayDims.size(); ++index)
+                        System.out.print("]");
+                    System.out.print(", ");
+                    for (int length : currentArrayDims)
+                        System.out.printf("[%d x ", length);
+                    System.out.print("i32");
+                    for (int index = 0;index < currentArrayDims.size(); ++index)
+                        System.out.print("]");
+                    System.out.printf("* %%v%d, i32 0", currentInitSymbol.getIndex());
+                    for (int i : currentInitDims)
+                        System.out.printf(", i32 %d", i);
+                    System.out.print("\n");
+                    System.out.print("\tstore i32 ");
+                    if (canCalc) {
+                        currentInitSymbol.setConstArrayValue(currentInitDims, nodeValue);
+                        System.out.printf("%d, ", nodeValue);
+                    }
+                    else {
+                        System.out.println("常量定义的右值必须可以计算！");
+                        System.exit(-1);
+                    }
+                    System.out.printf("i32* %%v%d\n", tmp);
+                    nodeIndex = tmp;
+                }
+            } else {
+                currentInitialDims += 1;
+                if (currentInitialDims >= currentArrayDims.size())  {
+                    System.out.print("初始化的维度不匹配！\n");
+                    System.exit(-1);
+                }
+                int maxDim = currentArrayDims.get(currentInitialDims);
+                int nowDim = ctx.countConstInitial();
+                if (currentInitialDims < currentArrayDims.size() && nowDim > maxDim) {
+                    System.out.print("初始化的维度不匹配2！\n");
+                    System.exit(-1);
+                }
+                if (isGlobalVariable) {
+                    for (int index = currentInitialDims; index < currentArrayDims.size(); index++)
+                        System.out.printf("[%d x ", currentArrayDims.get(index));
+                    System.out.print("i32");
+                    for (int index = currentInitialDims; index < currentArrayDims.size(); index++)
+                        System.out.print("]");
+                    System.out.print(" ");
+                }
+
+                if (isGlobalVariable)
+                    System.out.print("[");
+                for (int i = 0;i < nowDim; ++i)  {
+                    currentInitDims.add(i);
+                    visit(ctx.constInitial(i));
+                    if (isGlobalVariable && (i != nowDim - 1 || nowDim < maxDim))
+                        System.out.print(", ");
+                    currentInitDims.remove(currentInitDims.size() - 1);
+                }
+                for (int i = nowDim; i < maxDim; ++i) {
+                    if (isGlobalVariable) {
+                        if (currentInitialDims + 1 == currentArrayDims.size()) {
+                            System.out.print("i32 0");
+                        } else {
+                            for (int index = currentInitialDims + 1; index < currentArrayDims.size(); index++)
+                                System.out.printf("[%d x ", currentArrayDims.get(index));
+                            System.out.print("i32");
+                            for (int index = currentInitialDims + 1; index < currentArrayDims.size(); index++)
+                                System.out.print("]");
+                            System.out.print(" ");
+                            System.out.print("zeroinitializer");
+                        }
+                        if (i != maxDim - 1)
+                            System.out.print(", ");
+                    }
+                }
+                if (isGlobalVariable)
+                    System.out.print("]");
+                currentInitialDims -= 1;
+            }
+        } else {
+            visitChild(ctx);
+        }
+        return null;
+    }
 
     public Void visitVarDecl(ASTNode ctx) {
         declType = 1;
@@ -254,44 +420,208 @@ public class Visitor {
 
     public Void visitVarDef(ASTNode ctx) {
         if (declType == 1) {
-            String name = ctx.ident().getToken().getText();
-            if (!table.checkName(name)) {
-                System.out.println("name repeated: " + name);
-                System.exit(-1);
-            }
-            Symbol symbol = table.allocInteger(name, 0);
-            if (isGlobalVariable) symbol.setGlobal(true);
-            if (!isGlobalVariable)
-                System.out.printf("\t%%v%d = alloca i32\n", symbol.getIndex());
-            int initValue = 0;
-            if (ctx.hasInitVal()) {
-                visit(ctx.initVal());
-                if (!isGlobalVariable) {
-                    if (canCalc) {
-                        // 如果可以计算，则结果保存在 nodeValue 中
-                        System.out.printf("\tstore i32 %d, i32* %%v%d\n", nodeValue, symbol.getIndex());
+            if (ctx.hasConstExp()) {
+                String name = ctx.ident().getToken().getText();
+                if (!table.checkName(name)) {
+                    System.out.println("name repeated: " + name);
+                    System.exit(-1);
+                }
+                int dim = ctx.countConstExp();
+                ArrayList<Integer> dims = new ArrayList<>();
+                for (int index = 0;index < dim; ++index) {
+                    visit(ctx.constExp(index));
+                    dims.add(nodeValue);
+                }
+                Symbol symbol = table.allocArray(name, 0);
+                symbol.setDims(dims);
+                if (isGlobalVariable) {
+                    symbol.setGlobal(true);
+                    System.out.printf("@%s = dso_local global ", name);
+                    if (ctx.hasInitVal()) {
+                        currentArrayDims = dims;
+                        currentInitialDims = -1;
+                        currentInitDims = new ArrayList<>();
+                        currentInitSymbol = symbol;
+                        isArrayInit = true;
+                        visit(ctx.initVal());
+                        currentArrayDims = null;
+                        currentInitialDims = -1;
+                        currentInitDims = null;
+                        currentInitSymbol = null;
+                        isArrayInit = false;
+                        System.out.print("\n");
                     } else {
-                        // 如果不可以计算，则结果保存在 nodeIndex 寄存器中
-                        System.out.printf("\tstore i32 %%v%d, i32* %%v%d\n", nodeIndex, symbol.getIndex());
+                        for (int length : dims)
+                            System.out.printf("[%d x ", length);
+                        System.out.print("i32");
+                        for (int index = 0;index < dim; ++index)
+                            System.out.print("]");
+                        System.out.print(" zeroinitializer\n");
                     }
                 } else {
-                    if (canCalc)
-                        initValue = nodeValue;
-                    else {
-                        System.out.println("全局变量必须用常量作为初始值");
-                        System.exit(-1);
+                    System.out.printf("\t%%v%d = alloca ", symbol.getIndex());
+                    for (int length : dims)
+                        System.out.printf("[%d x ", length);
+                    System.out.print("i32");
+                    for (int index = 0;index < dim; ++index)
+                        System.out.print("]");
+                    System.out.print("\n");
+                    if (ctx.hasInitVal()) {
+                        currentArrayDims = dims;
+                        currentInitialDims = -1;
+                        currentInitDims = new ArrayList<>();
+                        currentInitSymbol = symbol;
+                        isArrayInit = true;
+                        visit(ctx.initVal());
+                        currentArrayDims = null;
+                        currentInitialDims = -1;
+                        currentInitDims = null;
+                        currentInitSymbol = null;
+                        isArrayInit = false;
                     }
                 }
+            } else {
+                String name = ctx.ident().getToken().getText();
+                if (!table.checkName(name)) {
+                    System.out.println("name repeated: " + name);
+                    System.exit(-1);
+                }
+                Symbol symbol = table.allocInteger(name, 0);
+                if (isGlobalVariable) symbol.setGlobal(true);
+                if (!isGlobalVariable)
+                    System.out.printf("\t%%v%d = alloca i32\n", symbol.getIndex());
+                int initValue = 0;
+                if (ctx.hasInitVal()) {
+                    visit(ctx.initVal());
+                    if (!isGlobalVariable) {
+                        if (canCalc) {
+                            // 如果可以计算，则结果保存在 nodeValue 中
+                            System.out.printf("\tstore i32 %d, i32* %%v%d\n", nodeValue, symbol.getIndex());
+                        } else {
+                            // 如果不可以计算，则结果保存在 nodeIndex 寄存器中
+                            System.out.printf("\tstore i32 %%v%d, i32* %%v%d\n", nodeIndex, symbol.getIndex());
+                        }
+                    } else {
+                        if (canCalc)
+                            initValue = nodeValue;
+                        else {
+                            System.out.println("全局变量必须用常量作为初始值");
+                            System.exit(-1);
+                        }
+                    }
+                }
+                // @a = dso_local global i32 5
+                if (isGlobalVariable)
+                    System.out.printf("@%s = dso_local global i32 %d\n\n", symbol.getName(), initValue);
             }
-            // @a = dso_local global i32 5
-            if (isGlobalVariable)
-                System.out.printf("@%s = dso_local global i32 %d\n\n", symbol.getName(), initValue);
         }
         return null;
     }
 
+    private ArrayList<Integer> currentArrayDims;
+    private ArrayList<Integer> currentInitDims;
+    private Integer currentInitialDims = -1;
+    private Symbol currentInitSymbol;
+    private boolean isArrayInit = false;
+
     public Void visitInitVal(ASTNode ctx) {
-        visitChild(ctx);
+        if (isArrayInit) {
+            if (ctx.hasExp()) {
+                visitChild(ctx);
+                if (currentInitDims.size() != currentArrayDims.size()) {
+                    System.out.print("初始化的维度不匹配3！\n");
+                    System.exit(-1);
+                }
+
+                if (isGlobalVariable) {
+                    if (canCalc)
+                        System.out.printf("i32 %d", nodeValue);
+                    else {
+                        System.out.println("初始值必须编译器可计算");
+                        System.exit(-1);
+                    }
+                } else {
+                    int tmp = table.getNewRegister();
+                    System.out.printf("\t%%v%d = getelementptr ", tmp);
+                    for (int length : currentArrayDims)
+                        System.out.printf("[%d x ", length);
+                    System.out.print("i32");
+                    for (int index = 0;index < currentArrayDims.size(); ++index)
+                        System.out.print("]");
+                    System.out.print(", ");
+                    for (int length : currentArrayDims)
+                        System.out.printf("[%d x ", length);
+                    System.out.print("i32");
+                    for (int index = 0;index < currentArrayDims.size(); ++index)
+                        System.out.print("]");
+                    System.out.printf("* %%v%d, i32 0", currentInitSymbol.getIndex());
+                    for (int i : currentInitDims)
+                        System.out.printf(", i32 %d", i);
+                    System.out.print("\n");
+                    System.out.print("\tstore i32 ");
+                    if (canCalc) {
+                        System.out.printf("%d, ", nodeValue);
+                        currentInitSymbol.setConstArrayValue(currentInitDims, nodeValue);
+                    }
+                    else
+                        System.out.printf("%%v%d, ", nodeIndex);
+                    System.out.printf("i32* %%v%d\n", tmp);
+                    nodeIndex = tmp;
+                }
+            } else {
+                currentInitialDims += 1;
+                if (currentInitialDims >= currentArrayDims.size())  {
+                    System.out.print("初始化的维度不匹配！\n");
+                    System.exit(-1);
+                }
+                int maxDim = currentArrayDims.get(currentInitialDims);
+                int nowDim = ctx.countInitVal();
+                if (currentInitialDims < currentArrayDims.size() && nowDim > maxDim) {
+                    System.out.print("初始化的维度不匹配2！\n");
+                    System.exit(-1);
+                }
+                if (isGlobalVariable) {
+                    for (int index = currentInitialDims; index < currentArrayDims.size(); index++)
+                        System.out.printf("[%d x ", currentArrayDims.get(index));
+                    System.out.print("i32");
+                    for (int index = currentInitialDims; index < currentArrayDims.size(); index++)
+                        System.out.print("]");
+                    System.out.print(" ");
+                }
+
+                if (isGlobalVariable)
+                    System.out.print("[");
+                for (int i = 0;i < nowDim; ++i)  {
+                    currentInitDims.add(i);
+                    visit(ctx.initVal(i));
+                    if (isGlobalVariable && (i != nowDim - 1 || nowDim < maxDim))
+                        System.out.print(", ");
+                    currentInitDims.remove(currentInitDims.size() - 1);
+                }
+                for (int i = nowDim; i < maxDim; ++i) {
+                    if (isGlobalVariable) {
+                        if (currentInitialDims + 1 == currentArrayDims.size()) {
+                            System.out.print("i32 0");
+                        } else {
+                            for (int index = currentInitialDims + 1; index < currentArrayDims.size(); index++)
+                                System.out.printf("[%d x ", currentArrayDims.get(index));
+                            System.out.print("i32");
+                            for (int index = currentInitialDims + 1; index < currentArrayDims.size(); index++)
+                                System.out.print("]");
+                            System.out.print(" ");
+                            System.out.print("zeroinitializer");
+                        }
+                        if (i != maxDim - 1)
+                            System.out.print(", ");
+                    }
+                }
+                if (isGlobalVariable)
+                    System.out.print("]");
+                currentInitialDims -= 1;
+            }
+        } else {
+            visitChild(ctx);
+        }
         return null;
     }
 
@@ -424,29 +754,102 @@ public class Visitor {
             System.out.println("变量尚未定义：" + name);
             System.exit(-1);
         }
-        if (symbol.isVariable()) {
-            canCalc = false;
-            nodeValue = -1;
-            nodePointer = table.find(name).getIndex();
-            if (needLValIndex) {
-                nodeIndex = table.getNewRegister();
-                if (!symbol.isGlobal())
-                    System.out.printf("\t%%v%d = load i32, i32* %%v%d\n", nodeIndex, table.find(name).getIndex());
-                else
-                    System.out.printf("\t%%v%d = load i32, i32* @%s\n", nodeIndex, name);
-            } else {
-                nodeIndex = -1;
-            }
-        } else {
-            assert (symbol.isConstant());
-            if (onlyVariable) {
-                System.out.println("不能对常量赋值: " + name);
+        if (ctx.hasExp()) {
+            if (!symbol.isArray() || ctx.countExp() != symbol.getDims().size()) {
+                System.out.println("使用的维度不匹配：" + symbol.getName());
                 System.exit(-1);
             }
-            canCalc = true;
-            nodeValue = symbol.getConstValue();
-            nodeIndex = nodePointer = -1;
+            ArrayList<Integer> val = new ArrayList<>();
+            ArrayList<Boolean> can = new ArrayList<>();
+            boolean allCan = true;
+            for (int index = 0; index < ctx.countExp(); ++index) {
+                visit(ctx.exp(index));
+                can.add(canCalc); allCan &= canCalc;
+                if (canCalc)
+                    val.add(nodeValue);
+                else
+                    val.add(nodeIndex);
+            }
+            if (symbol.isVariable() || (symbol.isConstant() && !allCan)) {
+                nodePointer = symbol.getIndex();
+                int tmp = table.getNewRegister();
+                System.out.printf("\t%%v%d = getelementptr ", tmp);
+                for (int length : symbol.getDims())
+                    System.out.printf("[%d x ", length);
+                System.out.print("i32");
+                for (int index = 0;index < symbol.getDims().size(); ++index)
+                    System.out.print("]");
+                System.out.print(", ");
+                for (int length : symbol.getDims())
+                    System.out.printf("[%d x ", length);
+                System.out.print("i32");
+                for (int index = 0;index < symbol.getDims().size(); ++index)
+                    System.out.print("]");
+                if (symbol.isGlobal())
+                    System.out.printf("* @%s, i32 0", symbol.getName());
+                else
+                    System.out.printf("* %%v%d, i32 0", nodePointer);
+                for (int index = 0; index < ctx.countExp(); ++index) {
+                    if (can.get(index))
+                        System.out.printf(", i32 %d", val.get(index));
+                    else
+                        System.out.printf(", i32 %%v%d", val.get(index));
+                }
+                // %v6 = getelementptr [2 x [3 x i32]], [2 x [3 x i32]]* %v3, i32 0, i32 0, i32 1
+                System.out.print("\n");
+                nodePointer = tmp;
+
+                // nodeIndex 为 load 后的值
+                if (needLValIndex) {
+                    nodeIndex = table.getNewRegister();
+                    System.out.printf("\t%%v%d = load i32, i32* %%v%d\n", nodeIndex, nodePointer);
+                } else {
+                    nodeIndex = -1;
+                }
+                nodeValue = -1;
+                canCalc = false;
+            }
+            else {
+                if (onlyVariable) {
+                    System.out.println("不能对常量赋值: " + name);
+                    System.exit(-1);
+                }
+                // TODO 得到正确的常量数值
+                canCalc = true;
+                nodeValue = symbol.getArrayValue(val);
+                nodeIndex = nodePointer = -1;
+            }
+        } else {
+            if (symbol.isArray()) {
+                System.out.println("错误的将数组用为 i32");
+                System.exit(-1);
+            }
+            if (symbol.isVariable()) {
+                canCalc = false;
+                nodeValue = -1;
+                nodePointer = table.find(name).getIndex();
+                if (needLValIndex) {
+                    nodeIndex = table.getNewRegister();
+                    if (!symbol.isGlobal())
+                        System.out.printf("\t%%v%d = load i32, i32* %%v%d\n", nodeIndex, nodePointer);
+                    else
+                        System.out.printf("\t%%v%d = load i32, i32* @%s\n", nodeIndex, name);
+                } else {
+                    nodeIndex = -1;
+                }
+            } else {
+                assert (symbol.isConstant());
+                if (onlyVariable) {
+                    System.out.println("不能对常量赋值: " + name);
+                    System.exit(-1);
+                }
+                canCalc = true;
+                nodeValue = symbol.getConstValue();
+                nodeIndex = nodePointer = -1;
+            }
         }
+
+
         return null;
     }
 
@@ -716,7 +1119,14 @@ public class Visitor {
         return null;
     }
 
-    public Void visitConstExp(ASTNode ctx) { return visitChild(ctx);}
+    public Void visitConstExp(ASTNode ctx) {
+        visitChild(ctx);
+        if (!canCalc) {
+            System.out.println("编译器无法求值");
+            System.exit(-1);
+        }
+        return null;
+    }
 
     public static void main(String[] args) throws FileNotFoundException {
         // 读取输入文件

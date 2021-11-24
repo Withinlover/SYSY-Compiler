@@ -15,9 +15,19 @@ public class SymbolBlock {
         symbolSet.put(name, Symbol.newVariable(name, index));
         return symbolSet.get(name);
     }
+    public Symbol addVariableArray(String name, int index) {
+        if (!checkName(name)) return null;
+        symbolSet.put(name, Symbol.newVariableArray(name, index));
+        return symbolSet.get(name);
+    }
     public Symbol addConstant(String name, int index) {
         if (!checkName(name)) return null;
         symbolSet.put(name, Symbol.newConstant(name, index));
+        return symbolSet.get(name);
+    }
+    public Symbol addConstantArray(String name, int index) {
+        if (!checkName(name)) return null;
+        symbolSet.put(name, Symbol.newConstantArray(name, index));
         return symbolSet.get(name);
     }
     public Symbol findVariables(String name) {

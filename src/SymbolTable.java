@@ -30,6 +30,13 @@ public class SymbolTable {
             default -> null;
         };
     }
+    public Symbol allocArray(String name, int type) { // 0 => variable, 1 => constant
+        return switch (type) {
+            case 0 -> block.addVariableArray(name, getNewRegister());
+            case 1 -> block.addConstantArray(name, getNewRegister());
+            default -> null;
+        };
+    }
     public void allocNewFunction(String name, ArrayList<Integer> params, int type) {
         if (type == 0) {
             System.out.printf("declare void @%s(", name);
