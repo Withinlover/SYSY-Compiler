@@ -753,10 +753,14 @@ public class Visitor {
         }
         else if (ctx.hasRETURN()) {
             visitChild(ctx);
-            if (canCalc)
-                System.out.printf("\tret i32 %d\n", nodeValue);
-            else
-                System.out.printf("\tret i32 %%v%d\n", nodeIndex);
+            if (ctx.hasExp()) {
+                if (canCalc)
+                    System.out.printf("\tret i32 %d\n", nodeValue);
+                else
+                    System.out.printf("\tret i32 %%v%d\n", nodeIndex);
+            } else {
+                System.out.print("\tret void\n");
+            }
         }
         else if (ctx.hasIF()) {
             int ifIndex, elseIndex, nxtIndex;
