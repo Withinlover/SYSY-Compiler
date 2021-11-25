@@ -6,6 +6,7 @@ public class Symbol {
     private final int index;
     private boolean isGlobal;
     private boolean isArray;
+    private boolean isPointer = false;
     private ArrayList<Integer> dims;
     private int constValue = 0;
     private ArrayList<Integer> constArrayValue;
@@ -19,6 +20,16 @@ public class Symbol {
 
     public static Symbol newVariable(String name, int index) {
         return new Symbol(name, 0, index);
+    }
+
+    public static Symbol newVariable() {
+        return new Symbol("test", 0,-1);
+    }
+
+    public static Symbol newArray() {
+        Symbol symbol = new Symbol("test", 0, -1);
+        symbol.isArray = true;
+        return symbol;
     }
 
     public static Symbol newVariableArray(String name, int index) {
@@ -39,6 +50,7 @@ public class Symbol {
 
     public void setConstValue(int value) { this.constValue = value; }
     public void setGlobal(boolean isGlobal) {this.isGlobal = isGlobal; }
+    public void setPointer(boolean isPointer) {this.isPointer = isPointer;}
     public void setDims(ArrayList<Integer> dims) {
         this.dims = dims;
         int res = 1;
@@ -68,6 +80,7 @@ public class Symbol {
     public boolean isConstant() { return kind == 1; }
     public boolean isGlobal() {return isGlobal;}
     public boolean isArray() {return isArray;}
+    public boolean isPointer() {return isPointer;}
 
     public int getIndex() { return index; }
     public int getConstValue() {
@@ -93,6 +106,20 @@ public class Symbol {
     }
 
     public String getName() {return name;}
+    public String getTypeString() {
+        StringBuilder paraType = new StringBuilder();
+        if (isArray) {
+            for (int j = isPointer ? 1 : 0;j < dims.size(); ++j)
+                paraType.append("[").append(dims.get(j)).append(" x ");
+            paraType.append("i32");
+            for (int j = isPointer ? 1 : 0;j < dims.size(); ++j)
+                paraType.append("]");
+            if (isPointer) paraType.append("*");
+        } else {
+            paraType.append("i32");
+        }
+        return paraType.toString();
+    }
 
     public boolean equals(String name) {
         return this.name.equals(name);

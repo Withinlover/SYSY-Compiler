@@ -502,7 +502,7 @@ public class Parser {
             while (getTokensType() == TokenType.braceLMedium) {
                 res.addChild(parseBRACE_L_MEDIUM());
                 res.addChild(parseExp());
-                res.addChild(parseBRACE_L_MEDIUM());
+                res.addChild(parseBRACE_R_MEDIUM());
             }
         }
         return res;

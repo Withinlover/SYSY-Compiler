@@ -626,13 +626,93 @@ public class Visitor {
     }
 
     public Void visitFuncDef(ASTNode ctx) {
-        String res = "define dso_local i32 ";
-        res = res + "@" + ctx.ident().getToken().getText();
-        res = res + "() {";
-        System.out.println(res);
-        visit(ctx.block());
-        res = "}";
-        System.out.println(res);
+        String name = ctx.ident().getToken().getText();
+        String type = ctx.funcType().hasINT() ? "i32" : "void";
+        ArrayList<Symbol> params = new ArrayList<>();
+        if (ctx.hasFuncFParams()) {
+            ASTNode root = ctx.funcFParams(), child;
+            int params_cnt = root.countFuncFParam();
+            System.out.printf(";; 函数 %s 有 %d 个参数\n", name, params_cnt);
+            for (int i = 0;i < params_cnt; ++i) {
+                child = root.funcFParam(i);
+                int dim = child.countBRACE_L_MEDIUM();
+                if (dim == 0) {
+                    // i32
+                    System.out.printf(";; 第 %d 个是一个整数\n", i + 1);
+                    params.add(Symbol.newVariable(child.ident().getToken().getText(), -1));
+                }
+                else {
+                    ArrayList<Integer> dims = new ArrayList<>();
+                    dims.add(0);
+                    for (int index = 0;index < dim - 1; ++index) {
+                        visit(child.exp(i));
+                        if (canCalc) {
+                            dims.add(nodeValue);
+                        } else {
+                            System.out.printf("函数参数必须是确定的： %s\n", name);
+                            System.exit(-1);
+                        }
+                    }
+                    Symbol param = Symbol.newVariableArray(child.ident().getToken().getText(), -1);
+                    param.setDims(dims); param.setPointer(true); params.add(param);
+                    System.out.printf(";; 第 %d 个是一个 %d 维的数组\n", i + 1, dims.size());
+                }
+            }
+        }
+        table.allocNewFunction(name, params, ctx.funcType().countINT(), false);
+        System.out.printf("define dso_local %s @%s (", type, name);
+        ArrayList<Integer> paramIndex = new ArrayList<>();
+        boolean isFirst = true;
+        for (Symbol param : params) {
+            if (isFirst) isFirst = false;
+            else System.out.print(", ");
+            int tmp = table.getNewRegister(); paramIndex.add(tmp);
+            if (!param.isArray())
+                System.out.printf("i32 %%v%d", tmp);
+            else {
+                ArrayList<Integer> dims = param.getDims(); int sz = dims.size();
+                for (int i = 1;i < sz; ++i)
+                    System.out.printf("[%d x ", dims.get(i));
+                System.out.print("i32");
+                for (int i = 1;i < sz; ++i)
+                    System.out.print("]");
+                System.out.printf("* %%v%d", tmp);
+            }
+        }
+        System.out.println(") {");
+        table.allocNewBlock();
+
+        for (int i = 0;i < paramIndex.size(); ++i) {
+            int index = paramIndex.get(i);
+            Symbol param = params.get(i);
+            if (param.isArray()) {
+                ArrayList<Integer> dims = param.getDims(); int sz = dims.size();
+                StringBuilder paraType = new StringBuilder();
+                for (int j = 1;j < sz; ++j)
+                    paraType.append("[").append(dims.get(j)).append(" x ");
+                paraType.append("i32");
+                for (int j = 1;j < sz; ++j)
+                    paraType.append("]");
+                paraType.append("*");
+
+                Symbol tmp = table.allocArray(param.getName(), 0);
+                tmp.setDims(dims); tmp.setPointer(true);
+                System.out.printf("\t%%v%d = alloca %s\n", tmp.getIndex(), paraType);
+                System.out.printf("\tstore %s %%v%d, %s * %%v%d\n", paraType, index, paraType, tmp.getIndex());
+            } else {
+                Symbol tmp = table.allocInteger(param.getName(), 0);
+                System.out.printf("\t%%v%d = alloca i32\n", tmp.getIndex());
+                System.out.printf("\tstore i32 %%v%d, i32* %%v%d\n", index, tmp.getIndex());
+            }
+        }
+
+        visitChild(ctx.block());
+        table.exitCurrentBlock();
+        if (ctx.funcType().hasINT())
+            System.out.println("\tret i32 0");
+        else
+            System.out.println("\tret void");
+        System.out.println("}\n");
         return null;
     }
 
@@ -654,7 +734,6 @@ public class Visitor {
     public Void visitStmt(ASTNode ctx) {
         if (ctx.hasLVal()) {
             int LIndex, RVal, RIdx; boolean RCan; Symbol symbol;
-//            needLValIndex = false;
             onlyVariable = true;
             visit(ctx.lVal()); LIndex = nodePointer; symbol = currentSymbol;
             needLValIndex = true; onlyVariable = false;
@@ -756,9 +835,9 @@ public class Visitor {
             System.out.println("变量尚未定义：" + name);
             System.exit(-1);
         }
-        if (ctx.hasExp()) {
-            if (!symbol.isArray() || ctx.countExp() != symbol.getDims().size()) {
-                System.out.println("使用的维度不匹配：" + symbol.getName());
+        if (symbol.isArray()) {
+            if (ctx.countExp() > symbol.getDims().size()) {
+                System.out.println("使用的维度不匹配1：" + symbol.getName());
                 System.exit(-1);
             }
             ArrayList<Integer> val = new ArrayList<>();
@@ -774,26 +853,28 @@ public class Visitor {
                     val.add(nodeIndex);
             }
 //            needLValIndex = false;
-            if (symbol.isVariable() || (symbol.isConstant() && !allCan)) {
+            if (symbol.isPointer()) {
                 nodePointer = symbol.getIndex();
-                int tmp = table.getNewRegister();
-                System.out.printf("\t%%v%d = getelementptr ", tmp);
-                for (int length : symbol.getDims())
-                    System.out.printf("[%d x ", length);
-                System.out.print("i32");
-                for (int index = 0;index < symbol.getDims().size(); ++index)
-                    System.out.print("]");
-                System.out.print(", ");
-                for (int length : symbol.getDims())
-                    System.out.printf("[%d x ", length);
-                System.out.print("i32");
-                for (int index = 0;index < symbol.getDims().size(); ++index)
-                    System.out.print("]");
-                if (symbol.isGlobal())
-                    System.out.printf("* @%s, i32 0", symbol.getName());
+
+                ArrayList<Integer> dims = symbol.getDims(); int sz = dims.size(), tmpIndex, lastIndex;
+                StringBuilder paraType = new StringBuilder();
+                for (int j = 1;j < sz; ++j)
+                    paraType.append("[").append(dims.get(j)).append(" x ");
+                paraType.append("i32");
+                for (int j = 1;j < sz; ++j)
+                    paraType.append("]");
+
+                tmpIndex = table.getNewRegister();
+                System.out.printf("\t%%v%d = load %s*, %s* * %%v%d\n", tmpIndex, paraType, paraType, symbol.getIndex());
+                lastIndex = tmpIndex; tmpIndex = table.getNewRegister();
+                if (can.get(0))
+                    System.out.printf("\t%%v%d = getelementptr %s, %s* %%v%d, i32 %d\n", tmpIndex, paraType, paraType, lastIndex, val.get(0));
                 else
-                    System.out.printf("* %%v%d, i32 0", nodePointer);
-                for (int index = 0; index < ctx.countExp(); ++index) {
+                    System.out.printf("\t%%v%d = getelementptr %s, %s* %%v%d, i32 %%v%d\n", tmpIndex, paraType, paraType, lastIndex, val.get(0));
+
+                lastIndex = tmpIndex; tmpIndex = table.getNewRegister();
+                System.out.printf("\t%%v%d = getelementptr %s, %s* %%v%d, i32 0", tmpIndex, paraType, paraType, lastIndex);
+                for (int index = 1; index < ctx.countExp(); ++index) {
                     if (can.get(index))
                         System.out.printf(", i32 %d", val.get(index));
                     else
@@ -801,12 +882,23 @@ public class Visitor {
                 }
                 // %v6 = getelementptr [2 x [3 x i32]], [2 x [3 x i32]]* %v3, i32 0, i32 0, i32 1
                 System.out.print("\n");
-                nodePointer = tmp;
+                nodePointer = tmpIndex;
+
+                paraType = new StringBuilder();
+                for (int j = ctx.countExp();j < symbol.getDims().size(); ++j)
+                    paraType.append("[").append(symbol.getDims().get(j)).append(" x ");
+                paraType.append("i32");
+                for (int j = ctx.countExp();j < symbol.getDims().size(); ++j)
+                    paraType.append("]");
 
                 // nodeIndex 为 load 后的值
                 if (needLValIndex) {
-                    nodeIndex = table.getNewRegister();
-                    System.out.printf("\t%%v%d = load i32, i32* %%v%d\n", nodeIndex, nodePointer);
+                    if (ctx.countExp() < symbol.getDims().size())
+                        nodeIndex = nodePointer;
+                    else {
+                        nodeIndex = table.getNewRegister();
+                        System.out.printf("\t%%v%d = load %s, %s* %%v%d\n", nodeIndex, paraType, paraType, nodePointer);
+                    }
                 } else {
                     nodeIndex = -1;
                 }
@@ -814,14 +906,68 @@ public class Visitor {
                 canCalc = false;
             }
             else {
-                if (onlyVariable) {
-                    System.out.println("不能对常量赋值: " + name);
-                    System.exit(-1);
+                if (symbol.isVariable() || (symbol.isConstant() && !allCan) || ctx.countExp() < symbol.getDims().size()) {
+                    nodePointer = symbol.getIndex();
+                    int tmp = table.getNewRegister();
+                    System.out.printf("\t%%v%d = getelementptr ", tmp);
+                    for (int length : symbol.getDims())
+                        System.out.printf("[%d x ", length);
+                    System.out.print("i32");
+                    for (int index = 0;index < symbol.getDims().size(); ++index)
+                        System.out.print("]");
+                    System.out.print(", ");
+                    for (int length : symbol.getDims())
+                        System.out.printf("[%d x ", length);
+                    System.out.print("i32");
+                    for (int index = 0;index < symbol.getDims().size(); ++index)
+                        System.out.print("]");
+                    if (symbol.isGlobal())
+                        System.out.printf("* @%s, i32 0", symbol.getName());
+                    else
+                        System.out.printf("* %%v%d, i32 0", nodePointer);
+                    for (int index = 0; index < ctx.countExp(); ++index) {
+                        if (can.get(index))
+                            System.out.printf(", i32 %d", val.get(index));
+                        else
+                            System.out.printf(", i32 %%v%d", val.get(index));
+                    }
+                    if (ctx.countExp() < symbol.getDims().size())
+                        System.out.print(", i32 0");
+                    // %v6 = getelementptr [2 x [3 x i32]], [2 x [3 x i32]]* %v3, i32 0, i32 0, i32 1
+                    System.out.print("\n");
+                    nodePointer = tmp;
+
+                    StringBuilder paraType = new StringBuilder();
+                    for (int j = ctx.countExp();j < symbol.getDims().size(); ++j)
+                        paraType.append("[").append(symbol.getDims().get(j)).append(" x ");
+                    paraType.append("i32");
+                    for (int j = ctx.countExp();j < symbol.getDims().size(); ++j)
+                        paraType.append("]");
+
+                    // nodeIndex 为 load 后的值
+                    if (needLValIndex) {
+                        if (ctx.countExp() < symbol.getDims().size())
+                           nodeIndex = nodePointer;
+                        else {
+                            nodeIndex = table.getNewRegister();
+                            System.out.printf("\t%%v%d = load %s, %s* %%v%d\n", nodeIndex, paraType, paraType, nodePointer);
+                        }
+                    } else {
+                        nodeIndex = -1;
+                    }
+                    nodeValue = -1;
+                    canCalc = false;
                 }
-                // TODO 得到正确的常量数值
-                canCalc = true;
-                nodeValue = symbol.getArrayValue(val);
-                nodeIndex = nodePointer = -1;
+                else {
+                    if (onlyVariable) {
+                        System.out.println("不能对常量赋值: " + name);
+                        System.exit(-1);
+                    }
+                    // TODO 得到正确的常量数值
+                    canCalc = true;
+                    nodeValue = symbol.getArrayValue(val);
+                    nodeIndex = nodePointer = -1;
+                }
             }
         }
         else {
@@ -863,11 +1009,11 @@ public class Visitor {
         if (ctx.hasIdent()) {
             String name = ctx.ident().getToken().getText();
             if (!table.checkFunction(name)) {
-                ArrayList<Integer> params = table.getFunctionParams(name);
+                ArrayList<Symbol> params = table.getFunctionParams(name);
                 int type = table.getFunctionType(name);
                 canCalc = false; nodeValue = -1;
                 ASTNode root = ctx.funcRParams();
-                if (params.size() > 0 && root.countExp() != params.size()) {
+                if (params.size() > 0 && (root == null || root.countExp() != params.size())) {
                     System.out.println("参数数量不匹配");
                     System.exit(-1);
                 }
@@ -876,7 +1022,6 @@ public class Visitor {
                 for (int i = 0; i < params.size(); ++i) {
                     needLValIndex = true;
                     visit(root.exp(i));
-//                    needLValIndex = false;
                     if (canCalc) {
                         paramIndex.add(nodeValue);
                         paramType.add(0);
@@ -897,12 +1042,13 @@ public class Visitor {
                     if (i != 0) System.out.print(", ");
                     int param = paramIndex.get(i), kind = paramType.get(i);
                     if (kind == 0) {
-                        System.out.printf("i32 %d", param);
+                        System.out.printf("%s %d", params.get(i).getTypeString(),param);
                     } else {
-                        System.out.printf("i32 %%v%d", param);
+                        System.out.printf("%s %%v%d", params.get(i).getTypeString(), param);
                     }
                 }
                 System.out.println(")");
+                canCalc = false; nodeValue = -1;
             } else {
                 System.out.println("函数未定义:" + name);
                 System.exit(-1);
