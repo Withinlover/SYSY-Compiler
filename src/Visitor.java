@@ -867,14 +867,8 @@ public class Visitor {
                 tmpIndex = table.getNewRegister();
                 System.out.printf("\t%%v%d = load %s*, %s* * %%v%d\n", tmpIndex, paraType, paraType, symbol.getIndex());
                 lastIndex = tmpIndex; tmpIndex = table.getNewRegister();
-                if (can.get(0))
-                    System.out.printf("\t%%v%d = getelementptr %s, %s* %%v%d, i32 %d\n", tmpIndex, paraType, paraType, lastIndex, val.get(0));
-                else
-                    System.out.printf("\t%%v%d = getelementptr %s, %s* %%v%d, i32 %%v%d\n", tmpIndex, paraType, paraType, lastIndex, val.get(0));
-
-                lastIndex = tmpIndex; tmpIndex = table.getNewRegister();
-                System.out.printf("\t%%v%d = getelementptr %s, %s* %%v%d, i32 0", tmpIndex, paraType, paraType, lastIndex);
-                for (int index = 1; index < ctx.countExp(); ++index) {
+                System.out.printf("\t%%v%d = getelementptr %s, %s* %%v%d", tmpIndex, paraType, paraType, lastIndex);
+                for (int index = 0; index < ctx.countExp(); ++index) {
                     if (can.get(index))
                         System.out.printf(", i32 %d", val.get(index));
                     else
