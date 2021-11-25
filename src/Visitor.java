@@ -660,6 +660,7 @@ public class Visitor {
             needLValIndex = true; onlyVariable = false;
             visit(ctx.exp());
             RVal = nodeValue; RIdx = nodeIndex; RCan = canCalc;
+//            System.out.println("Next is Store");
             System.out.print("\tstore i32 ");
             if (RCan) {
                 System.out.printf("%d, ", RVal);
@@ -822,7 +823,8 @@ public class Visitor {
                 nodeValue = symbol.getArrayValue(val);
                 nodeIndex = nodePointer = -1;
             }
-        } else {
+        }
+        else {
             if (symbol.isArray()) {
                 System.out.println("错误的将数组用为 i32");
                 System.exit(-1);
@@ -851,8 +853,7 @@ public class Visitor {
                 nodeIndex = nodePointer = -1;
             }
         }
-
-
+        currentSymbol = symbol;
         return null;
     }
 
