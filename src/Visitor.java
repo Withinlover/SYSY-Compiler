@@ -302,7 +302,8 @@ public class Visitor {
                         System.exit(-1);
                     }
                 }
-                System.out.printf("@%s = dso_local global i32 %d\n\n", symbol.getName(), initValue);
+                if (isGlobalVariable)
+                    System.out.printf("@%s = dso_local global i32 %d\n\n", symbol.getName(), initValue);
             }
         }
         return null;
