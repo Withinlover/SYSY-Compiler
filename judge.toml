@@ -69,3 +69,11 @@ image = { source = "dockerfile", path = ".", tag = "short_circuit" }
 run = [
   "java Main $input $ir",
 ]
+
+[jobs.mdarray]
+
+image = { source = "dockerfile", path = ".", tag = "mdarray" }
+
+run = [
+  "java Main $input $ir",
+]
